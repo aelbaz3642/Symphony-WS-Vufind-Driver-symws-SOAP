@@ -65,6 +65,7 @@ class Symphony implements DriverInterface
             'WebServices' => array(),
             'LibraryFilter' => array(),
             '999Holdings' => array(),
+            'Behaviors' => array(),
         );
 
         $this->config['WebServices'] += array(
@@ -81,6 +82,15 @@ class Symphony implements DriverInterface
         $this->config['999Holdings'] += array(
             'entry_number' => 999,
             'mode' => 'off', // also off, failover
+        );
+
+        $this->config['Behaviors'] += array(
+            'showBaseCallNumber' => true,
+            'showAccountLogin' => true,
+            'showStaffNotes' => true,
+            'showFeeType' => 'ALL_FEES',
+            'usernameField' => 'userID',
+            'userProfileGroupField' => 'USER_PROFILE_ID'
         );
     }
 
