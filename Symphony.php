@@ -1,4 +1,5 @@
 <?php
+ini_set("display_errors",1);
 /**
  * Symphony Web Services (symws) ILS Driver
  *
@@ -320,7 +321,9 @@ class Symphony implements DriverInterface
                 if (!($record = $db->getRecord($id))) {
                     PEAR::raiseError(new PEAR_Error('Record Does Not Exist'));
                 }
-                $results =+ $record->getFormattedMarcDetails(
+                $recordDriver = RecordDriverFactory::initRecordDriver($record);
+                
+                $results += $recordDriver->getFormattedMarcDetails(
                     $this->config['999Holdings']['entry_number'], $marcMap
                 );
             }
@@ -349,6 +352,8 @@ class Symphony implements DriverInterface
                 'status' => $curr_loc,
                 'location' => $location,
                 'callnumber' => $callnumber,
+                'duedate' => null,
+                'returnDate' => false,
                 'barcode' => $result['barcode number'],
                 'number' => $result['copy number'],
                 'reserve' => null,
