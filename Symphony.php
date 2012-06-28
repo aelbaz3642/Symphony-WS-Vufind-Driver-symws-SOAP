@@ -1,5 +1,4 @@
 <?php
-ini_set("display_errors",1);
 /**
  * Symphony Web Services (symws) ILS Driver
  *
@@ -324,8 +323,7 @@ class Symphony implements DriverInterface
                 $recordDriver = RecordDriverFactory::initRecordDriver($record);
                 
                 $results += $recordDriver->getFormattedMarcDetails(
-                    $this->config['999Holdings']['entry_number'], $marcMap
-                );
+                    $this->config['999Holdings']['entry_number'], $marcMap);
             }
         } else {
             $results = $this->get999HoldingsPre1_4($ids, $marcMap);
@@ -334,16 +332,18 @@ class Symphony implements DriverInterface
         $items = array();
         foreach ($results as $result) {
             $library  = $this->translatePolicyID('LIBR', $result['library']);
-            $curr_loc = $this->translatePolicyID('LOCN',
-                $result['current location']);
             $home_loc = $this->translatePolicyID('LOCN', 
                 $result['home location']);
 
+            $curr_loc = isset($result['current location']) ? 
+                $this->translatePolicyID('LOCN', $result['current location']) : 
+                $home_loc;
+            
             $available  =
                 (empty($curr_loc) || $curr_loc == $home_loc)
                     || $result['circulate flag'] == 'Y';
             $callnumber = $result['call number'];
-            $location   = $library . ' - ' . ($available && !empty($curr_lock)
+            $location   = $library . ' - ' . ($available && !empty($curr_loc)
                 ? $curr_loc : $home_loc);
 
             $items[] = array(
@@ -351,12 +351,14 @@ class Symphony implements DriverInterface
                 'availability' => $available,
                 'status' => $curr_loc,
                 'location' => $location,
+                'reserve' => null,
                 'callnumber' => $callnumber,
                 'duedate' => null,
                 'returnDate' => false,
-                'barcode' => $result['barcode number'],
                 'number' => $result['copy number'],
-                'reserve' => null,
+                'barcode' => $result['barcode number'],
+                'item_id' => $result['barcode number'],
+                'material' => null
             );
         }
         return $items;
@@ -743,24 +745,6 @@ class Symphony implements DriverInterface
     public function getPurchaseHistory($id)
     {
         return array();
-    }
-
-    /**
-     * Login Is Hidden
-     *
-     * This method can be used to hide VuFind's login options
-     *
-     * @return boolean true if login options should be hidden, false if not.
-     * @access public
-     */
-    public function loginIsHidden()
-    {
-        if (isset($this->config['Behaviors']['showAccountLogin']) 
-            && ($this->config['Behaviors']['showAccountLogin'] == false)) {
-            return true;
-        } else {
-            return false;
-        }
     }
 
      /**
