@@ -239,19 +239,11 @@ class Symphony implements DriverInterface
         }
     }
 
-    protected function getStatuses_999Holdings($ids) 
+    protected function get999HoldingsPre1_4($ids, $marcMap) 
     {
-        $marcMap = array(
-            'a' => 'call number',
-            'c' => 'copy number',
-            'i' => 'barcode number',
-            'm' => 'library',
-            'k' => 'current location',
-            'l' => 'home location',
-            'r' => 'circulate flag'
-        );
         // Setup Search Engine Connection
-        $db = ConnectionManager::connectToIndex();
+        $db      = ConnectionManager::connectToIndex();
+        $results = array();
 
         foreach ($ids as $id) {
             // Retrieve the record from the index
@@ -275,37 +267,68 @@ class Symphony implements DriverInterface
             if (!$marcRecord) {
                 PEAR::raiseError(new PEAR_Error('Cannot Process MARC Record'));
             }
-
-            $retval = array();
-            $results = 
+            $fields = 
                 $marcRecord->getFields($this->config['999Holdings']['entry_number']);
-            if (!$results) {
+            if (!$fields) {
                 continue;
             }
-            foreach ($results as $result) {
-                $current = array();
-                $subfields = $result->getSubfields();
+
+            foreach ($fields as $field) {
+                $current   = array();
+                $subfields = $field->getSubfields();
                 if ($subfields) {
                     $current['id'] = $id;
                     foreach ($subfields as $subfield) {
                         if (!is_numeric($subfield->getCode())) {
-                            if(array_key_exists($subfield->getCode(), $marcMap)) {
-                                $current[$marcMap[$subfield->getCode()]] = $subfield->getData();
+                            if (in_array('marc|'.$subfield->getCode(), $marcMap)) {
+                                $key = array_search('marc|'.$subfield->getCode(), 
+                                    $marcMap);
+
+                                $current[$key] = $subfield->getData();
                             } else {
-                                $current[$subfield->getCode()] = $subfield->getData();
+                                $current[$subfield->getCode()] = 
+                                    $subfield->getData();
                             }
                         }
                     }
-                    // If we found at least one chunk, add a heading to our result:
                     if (!empty($current)) {
-                        $retval[] = $current;
+                        $results[] = $current;
                     }
                 }
             }
         }
+        return $results;
+    }
+
+    protected function getStatuses999Holdings($ids) 
+    {
+        $marcMap = array(
+            'call number'            => 'marc|a',
+            'copy number'            => 'marc|c',
+            'barcode number'         => 'marc|i',
+            'library'                => 'marc|m',
+            'current location'       => 'marc|k',
+            'home location'          => 'marc|l',
+            'circulate flag'         => 'marc|r'
+        );
+
+        if (method_exists('MarcRecord', 'getFormattedMarcDetails')) {
+            $db = ConnectionManager::connectToIndex();
+
+            foreach ($ids as $id) {
+                if (!($record = $db->getRecord($id))) {
+                    PEAR::raiseError(new PEAR_Error('Record Does Not Exist'));
+                }
+                $results =+ $record->getFormattedMarcDetails(
+                    $this->config['999Holdings']['entry_number'], $marcMap
+                );
+            }
+        } else {
+            $results = $this->get999HoldingsPre1_4($ids, $marcMap);
+        }
 
         $items = array();
-        foreach ($retval as $result) {
+        foreach ($results as $result) {
             $library  = $this->translatePolicyID('LIBR', $result['library']);
             $curr_loc = $this->translatePolicyID('LOCN',
                 $result['current location']);
@@ -330,6 +353,7 @@ class Symphony implements DriverInterface
                 'reserve' => null,
             );
         }
+        print_r($items);
         return $items;
     }
 
@@ -674,7 +698,7 @@ class Symphony implements DriverInterface
     public function getStatuses($ids)
     {
         if ($this->config['999Holdings']['mode']) {
-            return $this->getStatuses_999Holdings($ids);
+            return $this->getStatuses999Holdings($ids);
         } else {
             return $this->getLiveStatuses($ids);
         }
