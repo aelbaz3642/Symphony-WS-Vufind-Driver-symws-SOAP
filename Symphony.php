@@ -241,47 +241,94 @@ class Symphony implements DriverInterface
 
     protected function getStatuses_999Holdings($ids) 
     {
-        $items = array();
-        foreach (VF_Search_Solr_Results::getRecords($ids) as $record) {
-            $results = $record->getFormattedMarcDetails(
-                $this->config['999Holdings']['entry_number'],
-                array(
-                    'call number'            => 'marc|a',
-                    'copy number'            => 'marc|c',
-                    'barcode number'         => 'marc|i',
-                    'library'                => 'marc|m',
-                    'current location'       => 'marc|k',
-                    'home location'          => 'marc|l',
-                    'circulate flag'         => 'marc|r',
-                ));
-            foreach ($results as $result) {
-                $library  = $this->translatePolicyID('LIBR', 
-                    $result['library']);
-                $curr_loc = $this->translatePolicyID('LOCN', 
-                    $result['current location']);
-                $home_loc = $this->translatePolicyID('LOCN', 
-                    $result['home location']);
+        $marcMap = array(
+            'a' => 'call number',
+            'c' => 'copy number',
+            'i' => 'barcode number',
+            'm' => 'library',
+            'k' => 'current location',
+            'l' => 'home location',
+            'r' => 'circulate flag'
+        );
+        // Setup Search Engine Connection
+        $db = ConnectionManager::connectToIndex();
 
-                $available  =
-                    (empty($curr_loc) || $curr_loc == $home_loc)
-                    || $result['circulate flag'] == 'Y';
-                $callnumber = $result['call number'];
-                $location   = $library
-                    . ' - '
-                    . ($available && !empty($curr_lock)
-                        ? $curr_loc : $home_loc);
-
-                $items[] = array(
-                    'id' => $result['id'],
-                    'availability' => $available,
-                    'status' => $curr_loc,
-                    'location' => $location,
-                    'callnumber' => $callnumber,
-                    'barcode' => $result['barcode number'],
-                    'number' => $result['copy number'],
-                    'reserve' => null,
-                );
+        foreach ($ids as $id) {
+            // Retrieve the record from the index
+            if (!($record = $db->getRecord($id))) {
+                PEAR::raiseError(new PEAR_Error('Record Does Not Exist'));
             }
+            
+            // Also process the MARC record:
+            $marc = trim($record['fullrecord']);
+            // check if we are dealing with MARCXML
+            $xmlHead = '<?xml version';
+            if (strcasecmp(substr($marc, 0, strlen($xmlHead)), $xmlHead) === 0) {
+                $marc = new File_MARCXML($marc, File_MARCXML::SOURCE_STRING);
+            } else {
+                $marc = preg_replace('/#31;/', "\x1F", $marc);
+                $marc = preg_replace('/#30;/', "\x1E", $marc);
+                $marc = new File_MARC($marc, File_MARC::SOURCE_STRING);
+            }
+
+            $marcRecord = $marc->next();
+            if (!$marcRecord) {
+                PEAR::raiseError(new PEAR_Error('Cannot Process MARC Record'));
+            }
+
+            $retval = array();
+            $results = 
+                $marcRecord->getFields($this->config['999Holdings']['entry_number']);
+            if (!$results) {
+                continue;
+            }
+            foreach ($results as $result) {
+                $current = array();
+                $subfields = $result->getSubfields();
+                if ($subfields) {
+                    $current['id'] = $id;
+                    foreach ($subfields as $subfield) {
+                        if (!is_numeric($subfield->getCode())) {
+                            if(array_key_exists($subfield->getCode(), $marcMap)) {
+                                $current[$marcMap[$subfield->getCode()]] = $subfield->getData();
+                            } else {
+                                $current[$subfield->getCode()] = $subfield->getData();
+                            }
+                        }
+                    }
+                    // If we found at least one chunk, add a heading to our result:
+                    if (!empty($current)) {
+                        $retval[] = $current;
+                    }
+                }
+            }
+        }
+
+        $items = array();
+        foreach ($retval as $result) {
+            $library  = $this->translatePolicyID('LIBR', $result['library']);
+            $curr_loc = $this->translatePolicyID('LOCN',
+                $result['current location']);
+            $home_loc = $this->translatePolicyID('LOCN', 
+                $result['home location']);
+
+            $available  =
+                (empty($curr_loc) || $curr_loc == $home_loc)
+                    || $result['circulate flag'] == 'Y';
+            $callnumber = $result['call number'];
+            $location   = $library . ' - ' . ($available && !empty($curr_lock)
+                ? $curr_loc : $home_loc);
+
+            $items[] = array(
+                'id' => $result['id'],
+                'availability' => $available,
+                'status' => $curr_loc,
+                'location' => $location,
+                'callnumber' => $callnumber,
+                'barcode' => $result['barcode number'],
+                'number' => $result['copy number'],
+                'reserve' => null,
+            );
         }
         return $items;
     }
@@ -427,6 +474,8 @@ class Symphony implements DriverInterface
                 $transitDate = isset($itemInfo->transitDate) ?
                      date('F j, Y', strtotime($itemInfo->transitDate)) : null;
 
+                $holdtype = $available ? 'hold' : 'recall';
+
                 $items[] = array(
                     'id' => $titleID,
                     'availability' => $available,
@@ -443,7 +492,7 @@ class Symphony implements DriverInterface
                     'notes' => $notes,
                     'summary' => array(),
                     'is_holdable' => $is_holdable,
-                    'holdtype' => 'hold',
+                    'holdtype' => $holdtype,
                     'addLink' => $is_holdable,
                     'item_id' => $itemInfo->itemID,
 
@@ -624,7 +673,7 @@ class Symphony implements DriverInterface
      */
     public function getStatuses($ids)
     {
-        if ($this->config['999Holdings']['mode'] == 'on') {
+        if ($this->config['999Holdings']['mode']) {
             return $this->getStatuses_999Holdings($ids);
         } else {
             return $this->getLiveStatuses($ids);
