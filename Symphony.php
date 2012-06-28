@@ -312,6 +312,7 @@ class Symphony implements DriverInterface
             'circulate flag'         => 'marc|r'
         );
 
+        $results = array();
         if (method_exists('MarcRecord', 'getFormattedMarcDetails')) {
             $db = ConnectionManager::connectToIndex();
 
@@ -353,7 +354,6 @@ class Symphony implements DriverInterface
                 'reserve' => null,
             );
         }
-        print_r($items);
         return $items;
     }
 
