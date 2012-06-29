@@ -850,7 +850,8 @@ class Symphony implements DriverInterface
                 'password' => $password,
             ));
 
-        $patron['id'] = $resp->patronInfo->$usernameField;
+        $patron['id']      = $resp->patronInfo->$usernameField;
+        $patron['library'] = $resp->patronInfo->patronLibraryID;
 
         if (preg_match('/([^,]*),\s([^\s]*)/', $resp->patronInfo->displayName, 
             $matches)) {
@@ -1391,6 +1392,36 @@ class Symphony implements DriverInterface
         }
  
         return $libraries;
+    }
+
+    /**
+     * Get Default Pick Up Location
+     *
+     * Returns the default pick up location set in Symphony.ini
+     *
+     * @param array $patron      Patron information returned by the patronLogin
+     * method.
+     * @param array $holdDetails Optional array, only passed in when getting a list
+     * in the context of placing a hold; contains most of the same values passed to
+     * placeHold, minus the patron data.  May be used to limit the pickup options
+     * or may be ignored.
+     *
+     * @return string       The default pickup location for the patron.
+     */
+    public function getDefaultPickUpLocation($patron = false, $holdDetails = null)
+    {
+        if (isset($patron['library'])) {
+            // Check for library in patron info
+            return $patron['library'];
+        } elseif(isset($this->config['Holds']['defaultPickUpLocation'])) {
+            // If no library returned in patron info, check config file
+            return $this->config['Holds']['defaultPickUpLocation'];
+        } else {
+            // Default to first library in the list if none specified 
+            // in patron info or config file
+            $libraries = $this->getPickUpLocations();
+            return $libraries[0]['locationID'];
+        }
     }
 }
 ?>
