@@ -664,7 +664,6 @@ class Symphony implements DriverInterface
     {
         $policyType = strtoupper($policyType); 
         $policyID   = strtoupper($policyID);
-        $policyList = array();
         $policyList = $this->getPolicyList($policyType);
 
         return isset($policyList[$policyID]) ? 
