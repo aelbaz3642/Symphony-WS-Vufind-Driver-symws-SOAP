@@ -653,7 +653,7 @@ class Symphony implements DriverInterface
      * support retrieving policies of multiple types simultaneously,
      * so we currently fetch only all policies of one type at a time.
      *
-     * @param string $policyType The policy type, e.g. Location or Library.
+     * @param string $policyType The policy type, e.g. LOCN or LIBR.
      * @param string $policyID   The policy ID, e.g. VIDEO-COLL or SWEM.
      *
      * @return The policy description, if found, or the policy ID, if not.
