@@ -346,7 +346,7 @@ class Symphony implements DriverInterface
             $location   = $library . ' - ' . ($available && !empty($curr_loc)
                 ? $curr_loc : $home_loc);
 
-            $items[] = array(
+            $items[$result['id']][] = array(
                 'id' => $result['id'],
                 'availability' => $available,
                 'status' => $curr_loc,
