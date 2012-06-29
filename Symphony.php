@@ -373,6 +373,7 @@ class Symphony implements DriverInterface
             'includeAvailabilityInfo' => 'true',
             'includeItemInfo' => 'true',
             'includeBoundTogether' => 'true',
+            'includeOrderInfo' => 'true',
         );
 
         // If only one library is being exclusively included,
@@ -592,6 +593,64 @@ class Symphony implements DriverInterface
         return $items;
     }
 
+    protected function parseTitleOrderInfo($titleOrderInfos, $titleID) {
+        $items = array();
+
+        $titleOrderInfos = is_array($titleOrderInfos)
+            ? $titleOrderInfos : array($titleOrderInfos);
+        
+        foreach ($titleOrderInfos as $titleOrderInfo) {
+            $library_id = $titleOrderInfo->orderLibraryID;
+
+            /* Allow returned holdings information to be
+             * limited to a whitelist of library names. */
+            if (isset($this->config['holdings']['include_libraries']) &&
+                !in_array(
+                    $library_id,
+                    $this->config['holdings']['include_libraries']
+                )) {
+                continue;
+            }
+
+            /* Allow libraries to be excluded by name
+             * from returned holdings information. */
+            if (isset($this->config['holdings']['exclude_libraries']) &&
+                in_array(
+                    $library_id,
+                    $this->config['holdings']['exclude_libraries']
+                )) {
+                continue;
+            }
+
+            $nr_copies = $titleOrderInfo->copiesOrdered;
+            $library = $this->translatePolicyID('LIBR', $library_id);
+
+            if (!empty($titleOrderInfo->orderDateReceived))
+                $statuses[] = "Received $titleOrderInfo->orderDateReceived";
+            if (!empty($titleOrderInfo->orderNote))
+                $statuses[] = $titleOrderInfo->orderNote;
+            if (!empty($titleOrderInfo->volumesOrdered))
+                $statuses[] = $titleOrderInfo->volumesOrdered;
+
+            for ($i = 1; $i <= $nr_copies; ++$i) {
+                $items[] = array(
+                    'id' => $titleID,
+                    'availability' => false,
+                    'status' => implode('; ', $statuses),
+                    'location' => "On order for $library",
+                    'callnumber' => null,
+                    'duedate' => null,
+                    'reserve' => 'N',
+                    'number' => $i,
+                    'barcode' => true,
+                    'unicorn_boundwith' => $ckey,
+                    'offsite' => $library_id == 'OFFSITE',
+                );
+            }
+        }
+        return $items;
+    }
+
     protected function getLiveStatuses($ids) 
     {
         foreach ($ids as $id) { 
@@ -632,12 +691,21 @@ class Symphony implements DriverInterface
              * have item records and can be parsed directly. Since bound-with
              * children do not have item records, parsing them should have no
              * effect. */
-            if (!isset($titleInfo->CallInfo)) {
-                continue; // no call info!
+            if (isset($titleInfo->CallInfo)) {
+                $items[$ckey] = array_merge(
+                    $items[$ckey],
+                    $this->parseCallInfo($titleInfo->CallInfo, $ckey, $is_holdable)
+                );
             }
 
-            $items[$ckey] += $this->parseCallInfo($titleInfo->CallInfo, $ckey, 
-                $is_holdable);
+            /* Copies on order do not have item records,
+             * so we make some pseudo-items for VuFind. */
+            if (isset($titleInfo->TitleOrderInfo)) {
+                $items[$ckey] = array_merge(
+                    $items[$ckey],
+                    $this->parseTitleOrderInfo($titleInfo->TitleOrderInfo, $ckey)
+                );
+            }
         }
         return $items;
     }
