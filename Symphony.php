@@ -309,6 +309,7 @@ class Symphony implements DriverInterface
             'library'                => 'marc|m',
             'current location'       => 'marc|k',
             'home location'          => 'marc|l',
+            'item type'              => 'marc|t',
             'circulate flag'         => 'marc|r'
         );
 
@@ -322,8 +323,10 @@ class Symphony implements DriverInterface
                 }
                 $recordDriver = RecordDriverFactory::initRecordDriver($record);
                 
-                $results += $recordDriver->getFormattedMarcDetails(
-                    $this->config['999Holdings']['entry_number'], $marcMap);
+                $entryNumber = $this->config['999Holdings']['entry_number'];
+
+                $results += 
+                    $recordDriver->getFormattedMarcDetails($entryNumber, $marcMap);
             }
         } else {
             $results = $this->get999HoldingsPre1_4($ids, $marcMap);
@@ -332,6 +335,7 @@ class Symphony implements DriverInterface
         $items = array();
         foreach ($results as $result) {
             $library  = $this->translatePolicyID('LIBR', $result['library']);
+            $material = $this->translatePolicyID('ITYP', $result['item type']);
             $home_loc = $this->translatePolicyID('LOCN', 
                 $result['home location']);
 
@@ -358,7 +362,8 @@ class Symphony implements DriverInterface
                 'number' => $result['copy number'],
                 'barcode' => $result['barcode number'],
                 'item_id' => $result['barcode number'],
-                'material' => null
+                'library' => $library,
+                'material' => $material
             );
         }
         return $items;
@@ -593,7 +598,8 @@ class Symphony implements DriverInterface
         return $items;
     }
 
-    protected function parseTitleOrderInfo($titleOrderInfos, $titleID) {
+    protected function parseTitleOrderInfo($titleOrderInfos, $titleID) 
+    {
         $items = array();
 
         $titleOrderInfos = is_array($titleOrderInfos)
@@ -605,32 +611,33 @@ class Symphony implements DriverInterface
             /* Allow returned holdings information to be
              * limited to a whitelist of library names. */
             if (isset($this->config['holdings']['include_libraries']) &&
-                !in_array(
-                    $library_id,
-                    $this->config['holdings']['include_libraries']
-                )) {
+                !in_array($library_id,
+                    $this->config['holdings']['include_libraries'])) {
                 continue;
             }
 
             /* Allow libraries to be excluded by name
              * from returned holdings information. */
             if (isset($this->config['holdings']['exclude_libraries']) &&
-                in_array(
-                    $library_id,
-                    $this->config['holdings']['exclude_libraries']
-                )) {
+                in_array($library_id,
+                    $this->config['holdings']['exclude_libraries'])) {
                 continue;
             }
 
             $nr_copies = $titleOrderInfo->copiesOrdered;
-            $library = $this->translatePolicyID('LIBR', $library_id);
+            $library   = $this->translatePolicyID('LIBR', $library_id);
 
-            if (!empty($titleOrderInfo->orderDateReceived))
+            if (!empty($titleOrderInfo->orderDateReceived)) {
                 $statuses[] = "Received $titleOrderInfo->orderDateReceived";
-            if (!empty($titleOrderInfo->orderNote))
+            }
+
+            if (!empty($titleOrderInfo->orderNote)) {
                 $statuses[] = $titleOrderInfo->orderNote;
-            if (!empty($titleOrderInfo->volumesOrdered))
+            }
+
+            if (!empty($titleOrderInfo->volumesOrdered)) {
                 $statuses[] = $titleOrderInfo->volumesOrdered;
+            }
 
             for ($i = 1; $i <= $nr_copies; ++$i) {
                 $items[] = array(
@@ -692,19 +699,15 @@ class Symphony implements DriverInterface
              * children do not have item records, parsing them should have no
              * effect. */
             if (isset($titleInfo->CallInfo)) {
-                $items[$ckey] = array_merge(
-                    $items[$ckey],
-                    $this->parseCallInfo($titleInfo->CallInfo, $ckey, $is_holdable)
-                );
+                $items[$ckey] = array_merge($items[$ckey],
+                    $this->parseCallInfo($titleInfo->CallInfo, $ckey, $is_holdable));
             }
 
             /* Copies on order do not have item records,
              * so we make some pseudo-items for VuFind. */
             if (isset($titleInfo->TitleOrderInfo)) {
-                $items[$ckey] = array_merge(
-                    $items[$ckey],
-                    $this->parseTitleOrderInfo($titleInfo->TitleOrderInfo, $ckey)
-                );
+                $items[$ckey] = array_merge($items[$ckey],
+                    $this->parseTitleOrderInfo($titleInfo->TitleOrderInfo, $ckey));
             }
         }
         return $items;
