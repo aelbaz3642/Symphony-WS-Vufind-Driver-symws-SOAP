@@ -98,6 +98,10 @@ class Symphony implements DriverInterface
      * Return a SoapClient for the specified SymWS service.
      *
      * This allows SoapClients to be shared and lazily instantiated.
+     *
+     * @param string $service The name of the SymWS service
+     *
+     * @return object The SoapClient object for the specified service
      */
     protected function getSoapClient($service) 
     {
@@ -115,6 +119,12 @@ class Symphony implements DriverInterface
 
     /**
      * Return a SoapHeader for the specified login and password.
+     *
+     * @param mixed   $login    The login account name if logging in, otherwise null
+     * @param mixed   $password The login password if logging in, otherwise null
+     * @param boolean $reset    Whether or not the session token should be reset
+     *
+     * @return object The SoapHeader object
      */
     protected function getSoapHeader($login = null, $password = null, 
         $reset = false) 
@@ -132,7 +142,13 @@ class Symphony implements DriverInterface
     }
 
     /**
-     * @param boolean $reset if true, replace the currently cached token
+     * Return or create the session token for current session.
+     *
+     * @param string  $login    The login account name
+     * @param string  $password The login password
+     * @param boolean $reset    If true, replace the currently cached token
+     *
+     * @return string The session token for the active session
      */
     protected function getSessionToken($login, $password, $reset = false) 
     {
@@ -239,7 +255,18 @@ class Symphony implements DriverInterface
         }
     }
 
-    protected function get999HoldingsPre1_4($ids, $marcMap) 
+    /**
+     * Get Statuses from 999 Holdings Marc Tag for Vufind versions older than 1.4
+     *
+     * Protected support method for parsing status info from the marc record
+     *
+     * @param array $ids     The array of record ids to retrieve the item info for
+     * @param array $marcMap The associative array of marc fields to map
+     *
+     * @return array An associative array of items with mapped marc fields
+     * @access protected
+     */
+    protected function get999HoldingsPre14($ids, $marcMap) 
     {
         // Setup Search Engine Connection
         $db      = ConnectionManager::connectToIndex();
@@ -300,6 +327,16 @@ class Symphony implements DriverInterface
         return $results;
     }
 
+    /**
+     * Get Statuses from 999 Holdings Marc Tag
+     *
+     * Protected support method for parsing status info from the marc record
+     *
+     * @param array $ids The array of record ids to retrieve the item info for
+     *
+     * @return array An associative array of items
+     * @access protected
+     */
     protected function getStatuses999Holdings($ids) 
     {
         $marcMap = array(
@@ -329,7 +366,7 @@ class Symphony implements DriverInterface
                     $recordDriver->getFormattedMarcDetails($entryNumber, $marcMap);
             }
         } else {
-            $results = $this->get999HoldingsPre1_4($ids, $marcMap);
+            $results = $this->get999HoldingsPre14($ids, $marcMap);
         }
 
         $items = array();
@@ -369,6 +406,16 @@ class Symphony implements DriverInterface
         return $items;
     }
 
+    /**
+     * Look up title info
+     *
+     * Protected support method for parsing the call info into items.
+     *
+     * @param array $ids The array of record ids to retrieve the item info for
+     *
+     * @return object Result of the "lookupTitleInfo" call to the standard service
+     * @access protected
+     */
     protected function lookupTitleInfo($ids) 
     {
         $ids = is_array($ids) ? $ids : array($ids);
@@ -391,6 +438,19 @@ class Symphony implements DriverInterface
         return $this->makeRequest('standard', 'lookupTitleInfo', $params);
     }
 
+    /**
+     * Parse Call Info
+     *
+     * Protected support method for parsing the call info into items.
+     *
+     * @param object  $callInfos   The call info of the title
+     * @param integer $titleID     The catalog key of the title in the catalog
+     * @param boolean $is_holdable Whether or not the title is holdable
+     * @param integer $bound_in    The ID of the parent title
+     *
+     * @return array An array of items, an empty array otherwise
+     * @access protected
+     */
     protected function parseCallInfo($callInfos, $titleID, $is_holdable = false, 
         $bound_in = null)
     {
@@ -552,6 +612,18 @@ class Symphony implements DriverInterface
         return $items;
     }
 
+    /**
+     * Parse Bound With Link Info
+     *
+     * Protected support method for parsing bound with link information.
+     *
+     * @param object  $boundwithLinkInfos The boundwithLinkInfos object of the title
+     * @param integer $ckey               The catalog key of the title in the catalog
+     *
+     * @return array An array of parseCallInfo() return values on success,
+     * an empty array otherwise.
+     * @access protected
+     */
     protected function parseBoundwithLinkInfo($boundwithLinkInfos, $ckey)
     {
         $items = array();
@@ -598,6 +670,17 @@ class Symphony implements DriverInterface
         return $items;
     }
 
+    /**
+     * Parse Title Order Info
+     *
+     * Protected support method for parsing order info.
+     *
+     * @param object  $titleOrderInfos The titleOrderInfo object of the title
+     * @param integer $titleID         The ID of the title in the catalog
+     *
+     * @return array An array of items that are on order, an empty array otherwise.
+     * @access protected
+     */
     protected function parseTitleOrderInfo($titleOrderInfos, $titleID) 
     {
         $items = array();
@@ -658,6 +741,17 @@ class Symphony implements DriverInterface
         return $items;
     }
 
+    /**
+     * Get Live Statuses
+     *
+     * Protected support method for retrieving a list of item statuses from symws.
+     *
+     * @param array $ids The array of record ids to retrieve the status for
+     *
+     * @return array An array of parseCallInfo() return values on success,
+     * an empty array otherwise.
+     * @access protected
+     */
     protected function getLiveStatuses($ids) 
     {
         foreach ($ids as $id) { 
@@ -768,7 +862,7 @@ class Symphony implements DriverInterface
      *
      * @param array $ids The array of record ids to retrieve the status for
      *
-     * @return mixed        An array of getStatus() return values on success,
+     * @return mixed An array of getStatus() return values on success,
      * a PEAR_Error object otherwise.
      * @access public
      */
@@ -817,7 +911,7 @@ class Symphony implements DriverInterface
         return array();
     }
 
-     /**
+    /**
      * Patron Login
      *
      * This is responsible for authenticating a patron against the catalog.
@@ -1134,7 +1228,7 @@ class Symphony implements DriverInterface
         return $holdDetails['reqnum'];
     }
 
-     /**
+    /**
      * Cancel Holds
      *
      * Attempts to Cancel a hold on a particular item
@@ -1181,7 +1275,7 @@ class Symphony implements DriverInterface
         return $result;
     }
 
-     /**
+    /**
      * Public Function which retrieves renew, hold and cancel settings from the
      * driver ini file.
      *
@@ -1332,7 +1426,11 @@ class Symphony implements DriverInterface
     }
 
     /**
+     * Get Policy List
+     *
      * Protected support method for getting a list of policies.
+     *
+     * @param string $policyType Symphony policy code for type of policy
      *
      * @return array An associative array of policy codes and descriptions.
      * @access protected
@@ -1413,7 +1511,7 @@ class Symphony implements DriverInterface
         if (isset($patron['library'])) {
             // Check for library in patron info
             return $patron['library'];
-        } elseif(isset($this->config['Holds']['defaultPickUpLocation'])) {
+        } elseif (isset($this->config['Holds']['defaultPickUpLocation'])) {
             // If no library returned in patron info, check config file
             return $this->config['Holds']['defaultPickUpLocation'];
         } else {
