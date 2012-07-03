@@ -353,14 +353,13 @@ class Symphony implements DriverInterface
         $results = array();
         if (method_exists('MarcRecord', 'getFormattedMarcDetails')) {
             $db = ConnectionManager::connectToIndex();
+            $entryNumber = $this->config['999Holdings']['entry_number'];
 
             foreach ($ids as $id) {
                 if (!($record = $db->getRecord($id))) {
                     PEAR::raiseError(new PEAR_Error('Record Does Not Exist'));
                 }
                 $recordDriver = RecordDriverFactory::initRecordDriver($record);
-                
-                $entryNumber = $this->config['999Holdings']['entry_number'];
 
                 $results += 
                     $recordDriver->getFormattedMarcDetails($entryNumber, $marcMap);

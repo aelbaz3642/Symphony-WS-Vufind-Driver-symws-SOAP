@@ -38,7 +38,8 @@
  * @link     http://vufind.org/wiki/building_an_ils_driver Wiki
  */
 
-class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface {
+class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
+{
     protected $config;
     protected $cacheManager;
     protected $policies;
@@ -52,7 +53,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface {
      */
     public function __construct($configFile = 'Symphony.ini')
     {
-       // Find and load the configuration file if it exists.
+        // Find and load the configuration file if it exists.
         $configFilePath = VF_Config_Reader::getConfigPath($configFile);
         if (file_exists($configFilePath)) {
             $this->config = parse_ini_file($configFilePath, true);
@@ -81,6 +82,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface {
             'backendOptions' => array(),
             'frontendOptions' => array(),
         );
+
         $this->config['PolicyCache']['frontendOptions'] += array(
             'automatic_serialization' => true,
             'lifetime' => null,
@@ -123,6 +125,10 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface {
      * Return a SoapClient for the specified SymWS service.
      *
      * This allows SoapClients to be shared and lazily instantiated.
+     *
+     * @param string $service The name of the SymWS service
+     *
+     * @return object The SoapClient object for the specified service
      */
     protected function getSoapClient($service) 
     {
@@ -140,6 +146,12 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface {
 
     /**
      * Return a SoapHeader for the specified login and password.
+     *
+     * @param mixed   $login    The login account name if logging in, otherwise null
+     * @param mixed   $password The login password if logging in, otherwise null
+     * @param boolean $reset    Whether or not the session token should be reset
+     *
+     * @return object The SoapHeader object
      */
     protected function getSoapHeader($login = null, $password = null, 
         $reset = false) 
@@ -157,7 +169,13 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface {
     }
 
     /**
-     * @param boolean $reset if true, replace the currently cached token
+     * Return or create the session token for current session.
+     *
+     * @param string  $login    The login account name
+     * @param string  $password The login password
+     * @param boolean $reset    If true, replace the currently cached token
+     *
+     * @return string The session token for the active session
      */
     protected function getSessionToken($login, $password, $reset = false) 
     {
@@ -264,6 +282,16 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface {
         }
     }
 
+    /**
+     * Get Statuses from 999 Holdings Marc Tag
+     *
+     * Protected support method for parsing status info from the marc record
+     *
+     * @param array $ids The array of record ids to retrieve the item info for
+     *
+     * @return array An associative array of items
+     * @access protected
+     */
     protected function getStatuses999Holdings($ids) 
     {
         $items   = array();
@@ -278,10 +306,10 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface {
             'circulate flag'         => 'marc|r'
         );
 
+        $entryNumber = $this->config['999Holdings']['entry_number'];
+
         foreach (VF_Search_Solr_Results::getRecords($ids) as $record) {
-            $results = $record->getFormattedMarcDetails(
-                $this->config['999Holdings']['entry_number'], $marcMap
-            );
+            $results = $record->getFormattedMarcDetails($entryNumber, $marcMap);
             foreach ($results as $result) {
                 $library  = $this->translatePolicyID('LIBR', $result['library']);
                 $home_loc = $this->translatePolicyID('LOCN', 
@@ -291,7 +319,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface {
                     $this->translatePolicyID('LOCN', $result['current location']) : 
                     $home_loc;
 
-                $available = (empty($curr_loc) || $curr_loc == $home_loc)
+                $available  = (empty($curr_loc) || $curr_loc == $home_loc)
                     || $result['circulate flag'] == 'Y';
                 $callnumber = $result['call number'];
                 $location   = $library . ' - ' . ($available && !empty($curr_loc)
@@ -317,6 +345,16 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface {
         return $items;
     }
 
+    /**
+     * Look up title info
+     *
+     * Protected support method for parsing the call info into items.
+     *
+     * @param array $ids The array of record ids to retrieve the item info for
+     *
+     * @return object Result of the "lookupTitleInfo" call to the standard service
+     * @access protected
+     */
     protected function lookupTitleInfo($ids) 
     {
         $ids = is_array($ids) ? $ids : array($ids);
@@ -339,6 +377,19 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface {
         return $this->makeRequest('standard', 'lookupTitleInfo', $params);
     }
 
+    /**
+     * Parse Call Info
+     *
+     * Protected support method for parsing the call info into items.
+     *
+     * @param object  $callInfos   The call info of the title
+     * @param integer $titleID     The catalog key of the title in the catalog
+     * @param boolean $is_holdable Whether or not the title is holdable
+     * @param integer $bound_in    The ID of the parent title
+     *
+     * @return array An array of items, an empty array otherwise
+     * @access protected
+     */
     protected function parseCallInfo($callInfos, $titleID, $is_holdable = false, 
         $bound_in = null)
     {
@@ -500,6 +551,18 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface {
         return $items;
     }
 
+    /**
+     * Parse Bound With Link Info
+     *
+     * Protected support method for parsing bound with link information.
+     *
+     * @param object  $boundwithLinkInfos The boundwithLinkInfos object of the title
+     * @param integer $ckey               The catalog key of the title in the catalog
+     *
+     * @return array An array of parseCallInfo() return values on success,
+     * an empty array otherwise.
+     * @access protected
+     */
     protected function parseBoundwithLinkInfo($boundwithLinkInfos, $ckey)
     {
         $items = array();
@@ -546,6 +609,17 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface {
         return $items;
     }
 
+    /**
+     * Parse Title Order Info
+     *
+     * Protected support method for parsing order info.
+     *
+     * @param object  $titleOrderInfos The titleOrderInfo object of the title
+     * @param integer $titleID         The ID of the title in the catalog
+     *
+     * @return array An array of items that are on order, an empty array otherwise.
+     * @access protected
+     */
     protected function parseTitleOrderInfo($titleOrderInfos, $titleID) 
     {
         $items = array();
@@ -606,6 +680,17 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface {
         return $items;
     }
 
+    /**
+     * Get Live Statuses
+     *
+     * Protected support method for retrieving a list of item statuses from symws.
+     *
+     * @param array $ids The array of record ids to retrieve the status for
+     *
+     * @return array An array of parseCallInfo() return values on success,
+     * an empty array otherwise.
+     * @access protected
+     */
     protected function getLiveStatuses($ids) 
     {
         foreach ($ids as $id) { 
@@ -1280,7 +1365,11 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface {
     }
 
     /**
+     * Get Policy List
+     *
      * Protected support method for getting a list of policies.
+     *
+     * @param string $policyType Symphony policy code for type of policy
      *
      * @return array An associative array of policy codes and descriptions.
      * @access protected
@@ -1289,9 +1378,9 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface {
     {
         try {
             $policyCache = $this->cacheManager->getCache('policy');
-            $cacheKey = hash('sha256', "${policyType}");
+            $cacheKey    = hash('sha256', "${policyType}");
 
-            if(isset($this->policies[$policyType])) {
+            if (isset($this->policies[$policyType])) {
                 return $this->policies[$policyType];
             } elseif ($policyList = $policyCache->load($cacheKey)) {
                 $this->policies[$policyType] = $policyList;
@@ -1367,7 +1456,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface {
         if (isset($patron['library'])) {
             // Check for library in patron info
             return $patron['library'];
-        } elseif(isset($this->config['Holds']['defaultPickUpLocation'])) {
+        } elseif (isset($this->config['Holds']['defaultPickUpLocation'])) {
             // If no library returned in patron info, check config file
             return $this->config['Holds']['defaultPickUpLocation'];
         } else {
