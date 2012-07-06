@@ -42,7 +42,7 @@ require_once 'Interface.php';
 class Symphony implements DriverInterface
 {
     protected $config;
-  
+
     /**
      * Constructor
      *
@@ -103,7 +103,7 @@ class Symphony implements DriverInterface
      *
      * @return object The SoapClient object for the specified service
      */
-    protected function getSoapClient($service) 
+    protected function getSoapClient($service)
     {
         static $soapClients = array();
 
@@ -126,13 +126,13 @@ class Symphony implements DriverInterface
      *
      * @return object The SoapHeader object
      */
-    protected function getSoapHeader($login = null, $password = null, 
-        $reset = false) 
-    {
+    protected function getSoapHeader($login = null, $password = null,
+        $reset = false
+    ) {
         $data = array('clientID' => $this->config['WebServices']['clientID']);
         if (!is_null($login)) {
-            $data['sessionToken'] = 
-                $this->getSessionToken($login, $password, $reset);
+            $data['sessionToken']
+                = $this->getSessionToken($login, $password, $reset);
         }
         return new SoapHeader(
             'http://www.sirsidynix.com/xmlns/common/header',
@@ -150,19 +150,19 @@ class Symphony implements DriverInterface
      *
      * @return string The session token for the active session
      */
-    protected function getSessionToken($login, $password, $reset = false) 
+    protected function getSessionToken($login, $password, $reset = false)
     {
         static $sessionTokens = array();
 
         $key = hash('sha256', "$login:$password");
-        
+
         if (!isset($sessionTokens[$key]) || $reset) {
             if (!$reset && $token = $_SESSION['symws']['session'][$key]) {
                 $sessionTokens[$key] = $token;
             } else {
                 $params = array('login' => $login);
 
-                if (isset($password)) { 
+                if (isset($password)) {
                     $params['password'] = $password;
                 }
 
@@ -194,15 +194,17 @@ class Symphony implements DriverInterface
      *
      * @return mixed the result of the SOAP call
      */
-    protected function makeRequest($service, $operation, $parameters = array(), 
-        $options = array())
-    {
+    protected function makeRequest($service, $operation, $parameters = array(),
+        $options = array()
+    ) {
         /* If a header was supplied, just use it, skipping everything else. */
         if (isset($options['header'])) {
-            return $this->getSoapClient($service)->soapCall($operation,
+            return $this->getSoapClient($service)->soapCall(
+                $operation,
                 $parameters,
                 null,
-                array($options['header']));
+                array($options['header'])
+            );
         }
 
         /* Determine what credentials to use for the SymWS session, if any.
@@ -218,8 +220,10 @@ class Symphony implements DriverInterface
                 ? $options['password']
                 : null;
         } elseif (isset($options['WebServices']['login'])
-            && !in_array($operation,
-                array('isRestrictedAccess', 'license', 'loginUser', 'version'))
+            && !in_array(
+                $operation,
+                array('isRestrictedAccess', 'license', 'loginUser', 'version')
+            )
         ) {
             $login    = $this->config['WebServices']['login'];
             $password = isset($this->config['WebServices']['password'])
@@ -242,8 +246,9 @@ class Symphony implements DriverInterface
             $soapClient->__setSoapHeaders($header);
             return $soapClient->$operation($parameters);
         } catch (SoapFault $e) {
-            if ($e->faultcode == 'ns0:com.sirsidynix.symws.service.'
-                .'exceptions.SecurityServiceException.sessionTimedOut') {
+            $timeoutException = 'ns0:com.sirsidynix.symws.service.'
+                . 'exceptions.SecurityServiceException.sessionTimedOut';
+            if ($e->faultcode == $timeoutException) {
                 $header = $this->getSoapHeader($login, $password, true);
                 $soapClient->__setSoapHeaders($header);
                 return $soapClient->$operation($parameters);
@@ -266,7 +271,7 @@ class Symphony implements DriverInterface
      * @return array An associative array of items with mapped marc fields
      * @access protected
      */
-    protected function get999HoldingsPre14($ids, $marcMap) 
+    protected function get999HoldingsPre14($ids, $marcMap)
     {
         // Setup Search Engine Connection
         $db      = ConnectionManager::connectToIndex();
@@ -277,7 +282,7 @@ class Symphony implements DriverInterface
             if (!($record = $db->getRecord($id))) {
                 PEAR::raiseError(new PEAR_Error('Record Does Not Exist'));
             }
-            
+
             // Also process the MARC record:
             $marc = trim($record['fullrecord']);
             // check if we are dealing with MARCXML
@@ -294,8 +299,9 @@ class Symphony implements DriverInterface
             if (!$marcRecord) {
                 PEAR::raiseError(new PEAR_Error('Cannot Process MARC Record'));
             }
-            $fields = 
-                $marcRecord->getFields($this->config['999Holdings']['entry_number']);
+            $fields = $marcRecord->getFields(
+                $this->config['999Holdings']['entry_number']
+            );
             if (!$fields) {
                 continue;
             }
@@ -308,13 +314,14 @@ class Symphony implements DriverInterface
                     foreach ($subfields as $subfield) {
                         if (!is_numeric($subfield->getCode())) {
                             if (in_array('marc|'.$subfield->getCode(), $marcMap)) {
-                                $key = array_search('marc|'.$subfield->getCode(), 
-                                    $marcMap);
+                                $key = array_search(
+                                    'marc|'.$subfield->getCode(), $marcMap
+                                );
 
                                 $current[$key] = $subfield->getData();
                             } else {
-                                $current[$subfield->getCode()] = 
-                                    $subfield->getData();
+                                $current[$subfield->getCode()]
+                                    = $subfield->getData();
                             }
                         }
                     }
@@ -337,7 +344,7 @@ class Symphony implements DriverInterface
      * @return array An associative array of items
      * @access protected
      */
-    protected function getStatuses999Holdings($ids) 
+    protected function getStatuses999Holdings($ids)
     {
         $marcMap = array(
             'call number'            => 'marc|a',
@@ -361,7 +368,7 @@ class Symphony implements DriverInterface
                 }
                 $recordDriver = RecordDriverFactory::initRecordDriver($record);
 
-                $results += 
+                $results +=
                     $recordDriver->getFormattedMarcDetails($entryNumber, $marcMap);
             }
         } else {
@@ -372,15 +379,14 @@ class Symphony implements DriverInterface
         foreach ($results as $result) {
             $library  = $this->translatePolicyID('LIBR', $result['library']);
             $material = $this->translatePolicyID('ITYP', $result['item type']);
-            $home_loc = $this->translatePolicyID('LOCN', 
-                $result['home location']);
+            $home_loc = $this->translatePolicyID('LOCN', $result['home location']);
 
-            $curr_loc = isset($result['current location']) ? 
-                $this->translatePolicyID('LOCN', $result['current location']) : 
+            $curr_loc = isset($result['current location']) ?
+                $this->translatePolicyID('LOCN', $result['current location']) :
                 $home_loc;
-            
-            $available  =
-                (empty($curr_loc) || $curr_loc == $home_loc)
+
+            $available
+                = (empty($curr_loc) || $curr_loc == $home_loc)
                     || $result['circulate flag'] == 'Y';
             $callnumber = $result['call number'];
             $location   = $library . ' - ' . ($available && !empty($curr_loc)
@@ -415,7 +421,7 @@ class Symphony implements DriverInterface
      * @return object Result of the "lookupTitleInfo" call to the standard service
      * @access protected
      */
-    protected function lookupTitleInfo($ids) 
+    protected function lookupTitleInfo($ids)
     {
         $ids = is_array($ids) ? $ids : array($ids);
 
@@ -430,8 +436,8 @@ class Symphony implements DriverInterface
         // If only one library is being exclusively included,
         // filtering can be done within Web Services.
         if (count($this->config['LibraryFilter']['include_only']) == 1) {
-            $params['libraryFilter'] = 
-                $this->config['LibraryFilter']['include_only'][0];
+            $params['libraryFilter']
+                = $this->config['LibraryFilter']['include_only'][0];
         }
 
         return $this->makeRequest('standard', 'lookupTitleInfo', $params);
@@ -450,9 +456,9 @@ class Symphony implements DriverInterface
      * @return array An array of items, an empty array otherwise
      * @access protected
      */
-    protected function parseCallInfo($callInfos, $titleID, $is_holdable = false, 
-        $bound_in = null)
-    {
+    protected function parseCallInfo($callInfos, $titleID, $is_holdable = false,
+        $bound_in = null
+    ) {
         $items = array();
 
         $callInfos = is_array($callInfos) ? $callInfos : array($callInfos);
@@ -460,11 +466,14 @@ class Symphony implements DriverInterface
         foreach ($callInfos as $callInfo) {
             $libraryID = $callInfo->libraryID;
 
-            if ((!empty($this->config['LibraryFilter']['include_only']) &&
-                !in_array($libraryID, 
-                    $this->config['LibraryFilter']['include_only']))
-                || in_array($libraryID, 
-                    $this->config['LibraryFilter']['exclude'])) {
+            $notInWhitelist = !empty($this->config['LibraryFilter']['include_only'])
+                && !in_array(
+                    $libraryID, $this->config['LibraryFilter']['include_only']
+                );
+            $onBlacklist = in_array(
+                $libraryID, $this->config['LibraryFilter']['exclude']
+            )
+            if ($notInWhitelist || $onBlacklist) {
                 continue;
             }
 
@@ -533,38 +542,43 @@ class Symphony implements DriverInterface
 
                 $material = $this->translatePolicyID('ITYP', $itemInfo->itemTypeID);
 
-                $duedate = isset($itemInfo->dueDate) ? 
+                $duedate = isset($itemInfo->dueDate) ?
                         date('F j, Y', strtotime($itemInfo->dueDate)) : null;
-                $duedate = isset($itemInfo->recallDueDate) ? 
-                        date('F j, Y', strtotime($itemInfo->recallDueDate)) : 
+                $duedate = isset($itemInfo->recallDueDate) ?
+                        date('F j, Y', strtotime($itemInfo->recallDueDate)) :
                         $duedate;
 
-                $requests_placed = isset($itemInfo->numberOfHolds) ? 
+                $requests_placed = isset($itemInfo->numberOfHolds) ?
                             $itemInfo->numberOfHolds : 0;
 
                 // Handle item notes
                 $notes = array();
-                
+
                 if (isset($itemInfo->publicNote)) {
                     $notes[] = $itemInfo->publicNote;
                 }
 
-                if (isset($itemInfo->staffNote) &&
-                    $this->config['Behaviors']['showStaffNotes']) {
+                if (isset($itemInfo->staffNote)
+                    && $this->config['Behaviors']['showStaffNotes']
+                ) {
                     $notes[] = $itemInfo->staffNote;
                 }
 
-                $transitSourceLibrary = 
-                    isset($itemInfo->transitSourceLibraryID) ? 
-                    $this->translatePolicyID('LIBR',
-                        $itemInfo->transitSourceLibraryID) : null;
+                $transitSourceLibrary
+                    = isset($itemInfo->transitSourceLibraryID)
+                    ? $this->translatePolicyID(
+                        'LIBR', $itemInfo->transitSourceLibraryID]
+                    )
+                    : null;
 
-                $transitDestinationLibrary = 
-                    isset($itemInfo->transitDestinationLibraryID) ?
-                    $this->translatePolicyID('LIBR', 
-                        $itemInfo->transitDestinationLibraryID) : null;
+                $transitDestinationLibrary
+                    = isset($itemInfo->transitDestinationLibraryID)
+                        ? $this->translatePolicyID(
+                            'LIBR', $itemInfo->transitDestinationLibraryID
+                        )
+                        : null;
 
-                $transitReason = isset($itemInfo->transitReason) ? 
+                $transitReason = isset($itemInfo->transitReason) ?
                     $itemInfo->transitReason : null;
 
                 $transitDate = isset($itemInfo->transitDate) ?
@@ -592,14 +606,14 @@ class Symphony implements DriverInterface
                     'addLink' => $is_holdable,
                     'item_id' => $itemInfo->itemID,
 
-                    // The fields below are non-standard and 
+                    // The fields below are non-standard and
                     // should be added to your holdings.tpl
                     // RecordDriver template to be utilized.
                     'library' => $library,
                     'material' => $material,
                     'bound_in' => $bound_in,
                     //'bound_in_title' => ,
-                    'transit_source_library' => 
+                    'transit_source_library' =>
                         $transitSourceLibrary,
                     'transit_destination_library' =>
                         $transitDestinationLibrary,
@@ -635,7 +649,8 @@ class Symphony implements DriverInterface
             // Ignore BoundwithLinkInfos which do not refer to parents
             // or which refer to the record we're already looking at.
             if (!$boundwithLinkInfo->linkedAsParent
-             || $boundwithLinkInfo->linkedTitle->titleID == $ckey) {
+                || $boundwithLinkInfo->linkedTitle->titleID == $ckey
+            ) {
                 continue;
             }
 
@@ -657,10 +672,12 @@ class Symphony implements DriverInterface
                     : array($callInfo->ItemInfo);
                 foreach ($itemInfos as $itemInfo) {
                     if ($itemInfo->itemID == $linked_itemID) {
-                        $items += $this->parseCallInfo($callInfo,
+                        $items += $this->parseCallInfo(
+                            $callInfo,
                             $ckey,
                             $is_holdable,
-                            $parent_ckey);
+                            $parent_ckey
+                        );
                     }
                 }
             }
@@ -680,29 +697,34 @@ class Symphony implements DriverInterface
      * @return array An array of items that are on order, an empty array otherwise.
      * @access protected
      */
-    protected function parseTitleOrderInfo($titleOrderInfos, $titleID) 
+    protected function parseTitleOrderInfo($titleOrderInfos, $titleID)
     {
         $items = array();
 
         $titleOrderInfos = is_array($titleOrderInfos)
             ? $titleOrderInfos : array($titleOrderInfos);
-        
+
         foreach ($titleOrderInfos as $titleOrderInfo) {
             $library_id = $titleOrderInfo->orderLibraryID;
 
             /* Allow returned holdings information to be
              * limited to a whitelist of library names. */
-            if (isset($this->config['holdings']['include_libraries']) &&
-                !in_array($library_id,
-                    $this->config['holdings']['include_libraries'])) {
+            if (isset($this->config['holdings']['include_libraries'])
+                && !in_array(
+                    $library_id,
+                    $this->config['holdings']['include_libraries']
+                )
+            ) {
                 continue;
             }
 
             /* Allow libraries to be excluded by name
              * from returned holdings information. */
-            if (isset($this->config['holdings']['exclude_libraries']) &&
-                in_array($library_id,
-                    $this->config['holdings']['exclude_libraries'])) {
+            if (isset($this->config['holdings']['exclude_libraries'])
+                && in_array(
+                    $library_id, $this->config['holdings']['exclude_libraries']
+                )
+            ) {
                 continue;
             }
 
@@ -751,9 +773,9 @@ class Symphony implements DriverInterface
      * an empty array otherwise.
      * @access protected
      */
-    protected function getLiveStatuses($ids) 
+    protected function getLiveStatuses($ids)
     {
-        foreach ($ids as $id) { 
+        foreach ($ids as $id) {
             $items[$id] = array();
         }
 
@@ -782,9 +804,10 @@ class Symphony implements DriverInterface
              * the ItemInfo.
              */
             if (isset($titleInfo->BoundwithLinkInfo)) {
-                $items[$ckey] = 
-                    $this->parseBoundwithLinkInfo($titleInfo->BoundwithLinkInfo, 
-                        $ckey);
+                $items[$ckey] = $this->parseBoundwithLinkInfo(
+                    $titleInfo->BoundwithLinkInfo,
+                    $ckey
+                );
             }
 
             /* Callnums that are not bound-with, or are bound-with parents,
@@ -792,21 +815,25 @@ class Symphony implements DriverInterface
              * children do not have item records, parsing them should have no
              * effect. */
             if (isset($titleInfo->CallInfo)) {
-                $items[$ckey] = array_merge($items[$ckey],
-                    $this->parseCallInfo($titleInfo->CallInfo, $ckey, $is_holdable));
+                $items[$ckey] = array_merge(
+                    $items[$ckey],
+                    $this->parseCallInfo($titleInfo->CallInfo, $ckey, $is_holdable)
+                );
             }
 
             /* Copies on order do not have item records,
              * so we make some pseudo-items for VuFind. */
             if (isset($titleInfo->TitleOrderInfo)) {
-                $items[$ckey] = array_merge($items[$ckey],
-                    $this->parseTitleOrderInfo($titleInfo->TitleOrderInfo, $ckey));
+                $items[$ckey] = array_merge(
+                    $items[$ckey],
+                    $this->parseTitleOrderInfo($titleInfo->TitleOrderInfo, $ckey)
+                );
             }
         }
         return $items;
     }
 
-    
+
     /**
      * Translate a Symphony policy ID into a policy description
      * (e.g. VIDEO-COLL => Videorecording Collection).
@@ -822,15 +849,15 @@ class Symphony implements DriverInterface
      *
      * @return The policy description, if found, or the policy ID, if not.
      *
-     * @todo policy description override 
+     * @todo policy description override
      */
     protected function translatePolicyID($policyType, $policyID)
     {
-        $policyType = strtoupper($policyType); 
+        $policyType = strtoupper($policyType);
         $policyID   = strtoupper($policyID);
         $policyList = $this->getPolicyList($policyType);
 
-        return isset($policyList[$policyID]) ? 
+        return isset($policyList[$policyID]) ?
             $policyList[$policyID] : $policyID;
     }
 
@@ -922,17 +949,17 @@ class Symphony implements DriverInterface
      * null on unsuccessful login, PEAR_Error on error.
      * @access public
      */
-    public function patronLogin($username, $password) 
+    public function patronLogin($username, $password)
     {
-        $usernameField = 
-                $this->config['Behaviors']['usernameField'];
+        $usernameField = $this->config['Behaviors']['usernameField'];
 
         $patron = array(
             'cat_username' => $username,
             'cat_password' => $password,
         );
 
-        $resp = $this->makeRequest('patron',
+        $resp = $this->makeRequest(
+            'patron',
             'lookupMyAccountInfo',
             array(
                 'includePatronInfo' => 'true',
@@ -941,13 +968,14 @@ class Symphony implements DriverInterface
             array(
                 'login' => $username,
                 'password' => $password,
-            ));
+            )
+        );
 
         $patron['id']      = $resp->patronInfo->$usernameField;
         $patron['library'] = $resp->patronInfo->patronLibraryID;
 
-        if (preg_match('/([^,]*),\s([^\s]*)/', $resp->patronInfo->displayName, 
-            $matches)) {
+        $regEx = '/([^,]*),\s([^\s]*)/';
+        if (preg_match($regEx, $resp->patronInfo->displayName, $matches)) {
             $patron['firstname'] = $matches[2];
             $patron['lastname']  = $matches[1];
         }
@@ -971,8 +999,8 @@ class Symphony implements DriverInterface
     public function getMyProfile($patron)
     {
         try {
-            $userProfileGroupField = 
-                $this->config['Behaviors']['userProfileGroupField'];
+            $userProfileGroupField
+                = $this->config['Behaviors']['userProfileGroupField'];
 
             $options = array(
                 'includePatronInfo' => 'true',
@@ -981,13 +1009,15 @@ class Symphony implements DriverInterface
                 'includeUserGroupInfo'     => 'true'
             );
 
-            $result = $this->makeRequest('patron',
+            $result = $this->makeRequest(
+                'patron',
                 'lookupMyAccountInfo',
                 $options,
                 array(
                     'login' => $patron['cat_username'],
                     'password' => $patron['cat_password']
-                ));
+                )
+            );
 
             $primaryAddress = $result->patronAddressInfo->primaryAddress;
 
@@ -1002,13 +1032,15 @@ class Symphony implements DriverInterface
             if (strcmp($userProfileGroupField, 'GROUP_ID') == 0) {
                 $group = $result->patronInfo->groupID;
             } elseif (strcmp($userProfileGroupField, 'USER_PROFILE_ID') == 0) {
-                $group = $this->makeRequest('security',
+                $group = $this->makeRequest(
+                    'security',
                     'lookupSessionInfo',
                     $options,
                     array(
                         'login' => $patron['cat_username'],
                         'password' => $patron['cat_password']
-                    ))->userProfileID;
+                    )
+                )->userProfileID;
             } elseif (strcmp($userProfileGroupField, 'PATRON_LIBRARY_ID') == 0) {
                 $group = $result->patronInfo->patronLibraryID;
             } elseif (strcmp($userProfileGroupField, 'DEPARTMENT') == 0) {
@@ -1017,8 +1049,8 @@ class Symphony implements DriverInterface
                 $group = null;
             }
 
-            list($lastname,$firstname) = explode(', ', 
-                                            $result->patronInfo->displayName);
+            list($lastname,$firstname)
+                = explode(', ', $result->patronInfo->displayName);
 
             $profile = array(
                 'lastname' => $lastname,
@@ -1054,17 +1086,19 @@ class Symphony implements DriverInterface
             $transList = array();
             $options   = array('includePatronCheckoutInfo' => 'ALL');
 
-            $result = $this->makeRequest('patron',
+            $result = $this->makeRequest(
+                'patron',
                 'lookupMyAccountInfo',
                 $options,
                 array(
                     'login' => $patron['cat_username'],
                     'password' => $patron['cat_password']
-                ));
+                )
+            );
 
             if (isset($result->patronCheckoutInfo)) {
                 $transactions = $result->patronCheckoutInfo;
-                $transactions = !is_array($transactions) ? array($transactions) : 
+                $transactions = !is_array($transactions) ? array($transactions) :
                     $transactions;
 
                 foreach ($transactions as $transaction) {
@@ -1075,8 +1109,8 @@ class Symphony implements DriverInterface
                     }
 
                     $transList[] = array(
-                        'duedate' => date('F j, Y',
-                            strtotime($transaction->dueDate)),
+                        'duedate' =>
+                            date('F j, Y', strtotime($transaction->dueDate)),
                         'id' => $transaction->titleKey,
                         'barcode' => $transaction->itemID,
                         'renew' => $transaction->renewals,
@@ -1113,18 +1147,20 @@ class Symphony implements DriverInterface
             $holdList = array();
             $options  = array('includePatronHoldInfo' => 'ACTIVE');
 
-            $result = $this->makeRequest('patron',
+            $result = $this->makeRequest(
+                'patron',
                 'lookupMyAccountInfo',
                 $options,
                 array(
                     'login' => $patron['cat_username'],
                     'password' => $patron['cat_password']
-                ));
-            
+                )
+            );
+
             if (!property_exists($result, 'patronHoldInfo')) {
                 return null;
             }
-            
+
             $holds = $result->patronHoldInfo;
             $holds = !is_array($holds) ? array($holds) : $holds;
 
@@ -1134,10 +1170,8 @@ class Symphony implements DriverInterface
                     //'type' => ,
                     'location' => $hold->pickupLibraryID,
                     'reqnum' => $hold->holdKey,
-                    'expire' => date('F j, Y',
-                        strtotime($hold->expiresDate)),
-                    'create' => date('F j, Y',
-                        strtotime($hold->placedDate)),
+                    'expire' => date('F j, Y', strtotime($hold->expiresDate)),
+                    'create' => date('F j, Y', strtotime($hold->placedDate)),
                     'position' => $hold->queuePosition,
                     'available' => $hold->available,
                     'item_id' => $hold->itemID,
@@ -1172,13 +1206,15 @@ class Symphony implements DriverInterface
             $feeType  = $this->config['Behaviors']['showFeeType'];
             $options  = array('includeFeeInfo' => $feeType);
 
-            $result = $this->makeRequest('patron',
+            $result = $this->makeRequest(
+                'patron',
                 'lookupMyAccountInfo',
                 $options,
                 array(
                     'login' => $patron['cat_username'],
                     'password' => $patron['cat_password']
-                ));
+                )
+            );
 
             if (isset($result->feeInfo)) {
                 $fees = $result->feeInfo;
@@ -1188,12 +1224,12 @@ class Symphony implements DriverInterface
                     $fineList[] = array(
                         'amount' => $fee->amount->_ * 100,
                         'checkout' =>
-                            isset($fee->feeItemInfo->checkoutDate) ? 
+                            isset($fee->feeItemInfo->checkoutDate) ?
                             $fee->feeItemInfo->checkoutDate : null,
                         'fine' => $fee->billReasonDescription,
                         'balance' => $fee->amountOutstanding->_ * 100,
-                        'createdate' => 
-                            isset($fee->feeItemInfo->dateBilled) ? 
+                        'createdate' =>
+                            isset($fee->feeItemInfo->dateBilled) ?
                             $fee->feeItemInfo->dateBilled : null,
                         'duedate' =>
                             isset($fee->feeItemInfo->dueDate) ?
@@ -1203,7 +1239,7 @@ class Symphony implements DriverInterface
                     );
                 }
             }
-           
+
             return $fineList;
         } catch (SoapFault $e) {
             return new PEAR_Error($e->getMessage());
@@ -1244,27 +1280,29 @@ class Symphony implements DriverInterface
         $count  = 0;
         $items  = array();
         $patron = $cancelDetails['patron'];
-        
+
         foreach ($cancelDetails['details'] as $holdKey) {
             try {
                 $options = array('holdKey' => $holdKey);
 
-                $hold = $this->makeRequest('patron',
+                $hold = $this->makeRequest(
+                    'patron',
                     'cancelMyHold',
                     $options,
                     array(
                         'login' => $patron['cat_username'],
                         'password' => $patron['cat_password']
-                    ));
-                
+                    )
+                );
+
                 $count++;
                 $items[$holdKey] = array(
-                    'success' => true, 
+                    'success' => true,
                     'status' => 'hold_cancel_success'
                 );
             } catch (Exception $e) {
                 $items[$holdKey] = array(
-                    'success' => false, 
+                    'success' => false,
                     'status' => 'hold_cancel_fail',
                     'sysMessage' => $e->getMessage()
                 );
@@ -1332,20 +1370,20 @@ class Symphony implements DriverInterface
             try {
                 $options = array('itemID' => $barcode);
 
-                $renewal = $this->makeRequest('patron',
+                $renewal = $this->makeRequest(
+                    'patron',
                     'renewMyCheckout',
                     $options,
                     array(
                         'login' => $patron['cat_username'],
                         'password' => $patron['cat_password'],
-                    ));
+                    )
+                );
 
                 $details[$barcode] = array(
                     'success' => true,
-                    'new_date' => date('j-M-y',
-                        strtotime($renewal->dueDate)),
-                    'new_time' =>date('g:i a',
-                        strtotime($renewal->dueDate)),
+                    'new_date' => date('j-M-y', strtotime($renewal->dueDate)),
+                    'new_time' =>date('g:i a', strtotime($renewal->dueDate)),
                     'item_id' => $renewal->itemID,
                     'sysMessage' => $renewal->message
                 );
@@ -1354,7 +1392,7 @@ class Symphony implements DriverInterface
                     'success' => false,
                     'new_date' => false,
                     'new_time' => false,
-                    'sysMessage' => 
+                    'sysMessage' =>
                         'We could not renew this item: ' . $e->getMessage()
                 );
             }
@@ -1401,13 +1439,15 @@ class Symphony implements DriverInterface
                 $options['comment'] = $holdDetails['comment'];
             }
 
-            $hold = $this->makeRequest('patron',
+            $hold = $this->makeRequest(
+                'patron',
                 'createMyHold',
                 $options,
                 array(
                     'login' => $patron['cat_username'],
                     'password' => $patron['cat_password']
-                ));
+                )
+            );
 
             $result = array(
                 'success' => true,
@@ -1448,8 +1488,8 @@ class Symphony implements DriverInterface
             $policies = $this->makeRequest('admin', 'lookupPolicyList', $options);
 
             foreach ($policies->policyInfo as $policyInfo) {
-                $policyList[$policyInfo->policyID] = 
-                    $policyInfo->policyDescription;
+                $policyList[$policyInfo->policyID]
+                    = $policyInfo->policyDescription;
             }
 
             $_SESSION['symws']['policies'][$policyType] = $policyList;
@@ -1487,7 +1527,7 @@ class Symphony implements DriverInterface
                 'locationDisplay' => $library
             );
         }
- 
+
         return $libraries;
     }
 
@@ -1514,7 +1554,7 @@ class Symphony implements DriverInterface
             // If no library returned in patron info, check config file
             return $this->config['Holds']['defaultPickUpLocation'];
         } else {
-            // Default to first library in the list if none specified 
+            // Default to first library in the list if none specified
             // in patron info or config file
             $libraries = $this->getPickUpLocations();
             return $libraries[0]['locationID'];
