@@ -43,13 +43,11 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
     protected $config;
     protected $cacheManager;
     protected $policies;
-  
+
     /**
      * Constructor
      *
      * @param string $configFile The location of an alternative config file
-     *
-     * @access public
      */
     public function __construct($configFile = 'Symphony.ini')
     {
@@ -109,16 +107,18 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
 
         // Initialize cache manager.
         $this->cacheManager = new Zend_Cache_Manager;
-        $this->cacheManager->setCacheTemplate('policy', array(
-            'frontend' => array(
-                'name' => 'Core',
-                'options' => $this->config['PolicyCache']['frontendOptions'],
-            ),
-            'backend' => array(
-                'name' => $this->config['PolicyCache']['backend'],
-                'options' => $this->config['PolicyCache']['backendOptions'],
-            ),
-        ));
+        $this->cacheManager->setCacheTemplate(
+            'policy', array(
+                'frontend' => array(
+                    'name' => 'Core',
+                    'options' => $this->config['PolicyCache']['frontendOptions'],
+                ),
+                'backend' => array(
+                    'name' => $this->config['PolicyCache']['backend'],
+                    'options' => $this->config['PolicyCache']['backendOptions'],
+                ),
+            )
+        );
     }
 
     /**
@@ -130,7 +130,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @return object The SoapClient object for the specified service
      */
-    protected function getSoapClient($service) 
+    protected function getSoapClient($service)
     {
         static $soapClients = array();
 
@@ -153,13 +153,13 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @return object The SoapHeader object
      */
-    protected function getSoapHeader($login = null, $password = null, 
-        $reset = false) 
-    {
+    protected function getSoapHeader($login = null, $password = null,
+        $reset = false
+    ) {
         $data = array('clientID' => $this->config['WebServices']['clientID']);
         if (!is_null($login)) {
-            $data['sessionToken'] = 
-                $this->getSessionToken($login, $password, $reset);
+            $data['sessionToken']
+                = $this->getSessionToken($login, $password, $reset);
         }
         return new SoapHeader(
             'http://www.sirsidynix.com/xmlns/common/header',
@@ -177,19 +177,19 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @return string The session token for the active session
      */
-    protected function getSessionToken($login, $password, $reset = false) 
+    protected function getSessionToken($login, $password, $reset = false)
     {
         static $sessionTokens = array();
 
         $key = hash('sha256', "$login:$password");
-        
+
         if (!isset($sessionTokens[$key]) || $reset) {
             if (!$reset && $token = $_SESSION['symws']['session'][$key]) {
                 $sessionTokens[$key] = $token;
             } else {
                 $params = array('login' => $login);
 
-                if (isset($password)) { 
+                if (isset($password)) {
                     $params['password'] = $password;
                 }
 
@@ -221,15 +221,17 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @return mixed the result of the SOAP call
      */
-    protected function makeRequest($service, $operation, $parameters = array(), 
-        $options = array())
-    {
+    protected function makeRequest($service, $operation, $parameters = array(),
+        $options = array()
+    ) {
         /* If a header was supplied, just use it, skipping everything else. */
         if (isset($options['header'])) {
-            return $this->getSoapClient($service)->soapCall($operation,
+            return $this->getSoapClient($service)->soapCall(
+                $operation,
                 $parameters,
                 null,
-                array($options['header']));
+                array($options['header'])
+            );
         }
 
         /* Determine what credentials to use for the SymWS session, if any.
@@ -245,8 +247,10 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
                 ? $options['password']
                 : null;
         } elseif (isset($options['WebServices']['login'])
-            && !in_array($operation,
-                array('isRestrictedAccess', 'license', 'loginUser', 'version'))
+            && !in_array(
+                $operation,
+                array('isRestrictedAccess', 'license', 'loginUser', 'version')
+            )
         ) {
             $login    = $this->config['WebServices']['login'];
             $password = isset($this->config['WebServices']['password'])
@@ -269,8 +273,9 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
             $soapClient->__setSoapHeaders($header);
             return $soapClient->$operation($parameters);
         } catch (SoapFault $e) {
-            if ($e->faultcode == 'ns0:com.sirsidynix.symws.service.'
-                .'exceptions.SecurityServiceException.sessionTimedOut') {
+            $timeoutException = 'ns0:com.sirsidynix.symws.service.'
+                . 'exceptions.SecurityServiceException.sessionTimedOut';
+            if ($e->faultcode == $timeoutException) {
                 $header = $this->getSoapHeader($login, $password, true);
                 $soapClient->__setSoapHeaders($header);
                 return $soapClient->$operation($parameters);
@@ -290,9 +295,8 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      * @param array $ids The array of record ids to retrieve the item info for
      *
      * @return array An associative array of items
-     * @access protected
      */
-    protected function getStatuses999Holdings($ids) 
+    protected function getStatuses999Holdings($ids)
     {
         $items   = array();
         $marcMap = array(
@@ -312,14 +316,14 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
             $results = $record->getFormattedMarcDetails($entryNumber, $marcMap);
             foreach ($results as $result) {
                 $library  = $this->translatePolicyID('LIBR', $result['library']);
-                $home_loc = $this->translatePolicyID('LOCN', 
-                    $result['home location']);
-                
-                $curr_loc = isset($result['current location']) ? 
-                    $this->translatePolicyID('LOCN', $result['current location']) : 
+                $home_loc
+                    = $this->translatePolicyID('LOCN', $result['home location']);
+
+                $curr_loc = isset($result['current location']) ?
+                    $this->translatePolicyID('LOCN', $result['current location']) :
                     $home_loc;
 
-                $available  = (empty($curr_loc) || $curr_loc == $home_loc)
+                $available = (empty($curr_loc) || $curr_loc == $home_loc)
                     || $result['circulate flag'] == 'Y';
                 $callnumber = $result['call number'];
                 $location   = $library . ' - ' . ($available && !empty($curr_loc)
@@ -353,9 +357,8 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      * @param array $ids The array of record ids to retrieve the item info for
      *
      * @return object Result of the "lookupTitleInfo" call to the standard service
-     * @access protected
      */
-    protected function lookupTitleInfo($ids) 
+    protected function lookupTitleInfo($ids)
     {
         $ids = is_array($ids) ? $ids : array($ids);
 
@@ -370,8 +373,8 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
         // If only one library is being exclusively included,
         // filtering can be done within Web Services.
         if (count($this->config['LibraryFilter']['include_only']) == 1) {
-            $params['libraryFilter'] = 
-                $this->config['LibraryFilter']['include_only'][0];
+            $params['libraryFilter']
+                = $this->config['LibraryFilter']['include_only'][0];
         }
 
         return $this->makeRequest('standard', 'lookupTitleInfo', $params);
@@ -388,11 +391,10 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      * @param integer $bound_in    The ID of the parent title
      *
      * @return array An array of items, an empty array otherwise
-     * @access protected
      */
-    protected function parseCallInfo($callInfos, $titleID, $is_holdable = false, 
-        $bound_in = null)
-    {
+    protected function parseCallInfo($callInfos, $titleID, $is_holdable = false,
+        $bound_in = null
+    ) {
         $items = array();
 
         $callInfos = is_array($callInfos) ? $callInfos : array($callInfos);
@@ -400,11 +402,14 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
         foreach ($callInfos as $callInfo) {
             $libraryID = $callInfo->libraryID;
 
-            if ((!empty($this->config['LibraryFilter']['include_only']) &&
-                !in_array($libraryID, 
-                    $this->config['LibraryFilter']['include_only']))
-                || in_array($libraryID, 
-                    $this->config['LibraryFilter']['exclude'])) {
+            $notInWhitelist = !empty($this->config['LibraryFilter']['include_only'])
+                && !in_array(
+                    $libraryID, $this->config['LibraryFilter']['include_only']
+                );
+            $onBlacklist = in_array(
+                $libraryID, $this->config['LibraryFilter']['exclude']
+            )
+            if ($notInWhitelist || $onBlacklist) {
                 continue;
             }
 
@@ -473,38 +478,43 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
 
                 $material = $this->translatePolicyID('ITYP', $itemInfo->itemTypeID);
 
-                $duedate = isset($itemInfo->dueDate) ? 
+                $duedate = isset($itemInfo->dueDate) ?
                         date('F j, Y', strtotime($itemInfo->dueDate)) : null;
-                $duedate = isset($itemInfo->recallDueDate) ? 
-                        date('F j, Y', strtotime($itemInfo->recallDueDate)) : 
+                $duedate = isset($itemInfo->recallDueDate) ?
+                        date('F j, Y', strtotime($itemInfo->recallDueDate)) :
                         $duedate;
 
-                $requests_placed = isset($itemInfo->numberOfHolds) ? 
+                $requests_placed = isset($itemInfo->numberOfHolds) ?
                             $itemInfo->numberOfHolds : 0;
 
                 // Handle item notes
                 $notes = array();
-                
+
                 if (isset($itemInfo->publicNote)) {
                     $notes[] = $itemInfo->publicNote;
                 }
 
-                if (isset($itemInfo->staffNote) &&
-                    $this->config['Behaviors']['showStaffNotes']) {
+                if (isset($itemInfo->staffNote)
+                    && $this->config['Behaviors']['showStaffNotes']
+                ) {
                     $notes[] = $itemInfo->staffNote;
                 }
 
-                $transitSourceLibrary = 
-                    isset($itemInfo->transitSourceLibraryID) ? 
-                    $this->translatePolicyID('LIBR',
-                        $itemInfo->transitSourceLibraryID) : null;
+                $transitSourceLibrary
+                    = isset($itemInfo->transitSourceLibraryID)
+                    ? $this->translatePolicyID(
+                        'LIBR', $itemInfo->transitSourceLibraryID]
+                    )
+                    : null;
 
-                $transitDestinationLibrary = 
-                    isset($itemInfo->transitDestinationLibraryID) ?
-                    $this->translatePolicyID('LIBR', 
-                        $itemInfo->transitDestinationLibraryID) : null;
+                $transitDestinationLibrary
+                    = isset($itemInfo->transitDestinationLibraryID)
+                        ? $this->translatePolicyID(
+                            'LIBR', $itemInfo->transitDestinationLibraryID
+                        )
+                        : null;
 
-                $transitReason = isset($itemInfo->transitReason) ? 
+                $transitReason = isset($itemInfo->transitReason) ?
                     $itemInfo->transitReason : null;
 
                 $transitDate = isset($itemInfo->transitDate) ?
@@ -532,14 +542,14 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
                     'addLink' => $is_holdable,
                     'item_id' => $itemInfo->itemID,
 
-                    // The fields below are non-standard and 
+                    // The fields below are non-standard and
                     // should be added to your holdings.tpl
                     // RecordDriver template to be utilized.
                     'library' => $library,
                     'material' => $material,
                     'bound_in' => $bound_in,
                     //'bound_in_title' => ,
-                    'transit_source_library' => 
+                    'transit_source_library' =>
                         $transitSourceLibrary,
                     'transit_destination_library' =>
                         $transitDestinationLibrary,
@@ -561,7 +571,6 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @return array An array of parseCallInfo() return values on success,
      * an empty array otherwise.
-     * @access protected
      */
     protected function parseBoundwithLinkInfo($boundwithLinkInfos, $ckey)
     {
@@ -575,7 +584,8 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
             // Ignore BoundwithLinkInfos which do not refer to parents
             // or which refer to the record we're already looking at.
             if (!$boundwithLinkInfo->linkedAsParent
-             || $boundwithLinkInfo->linkedTitle->titleID == $ckey) {
+                || $boundwithLinkInfo->linkedTitle->titleID == $ckey
+            ) {
                 continue;
             }
 
@@ -597,10 +607,12 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
                     : array($callInfo->ItemInfo);
                 foreach ($itemInfos as $itemInfo) {
                     if ($itemInfo->itemID == $linked_itemID) {
-                        $items += $this->parseCallInfo($callInfo,
+                        $items += $this->parseCallInfo(
+                            $callInfo,
                             $ckey,
                             $is_holdable,
-                            $parent_ckey);
+                            $parent_ckey
+                        );
                     }
                 }
             }
@@ -618,31 +630,35 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      * @param integer $titleID         The ID of the title in the catalog
      *
      * @return array An array of items that are on order, an empty array otherwise.
-     * @access protected
      */
-    protected function parseTitleOrderInfo($titleOrderInfos, $titleID) 
+    protected function parseTitleOrderInfo($titleOrderInfos, $titleID)
     {
         $items = array();
 
         $titleOrderInfos = is_array($titleOrderInfos)
             ? $titleOrderInfos : array($titleOrderInfos);
-        
+
         foreach ($titleOrderInfos as $titleOrderInfo) {
             $library_id = $titleOrderInfo->orderLibraryID;
 
             /* Allow returned holdings information to be
              * limited to a whitelist of library names. */
-            if (isset($this->config['holdings']['include_libraries']) &&
-                !in_array($library_id,
-                    $this->config['holdings']['include_libraries'])) {
+            if (isset($this->config['holdings']['include_libraries'])
+                && !in_array(
+                    $library_id,
+                    $this->config['holdings']['include_libraries']
+                )
+            ) {
                 continue;
             }
 
             /* Allow libraries to be excluded by name
              * from returned holdings information. */
-            if (isset($this->config['holdings']['exclude_libraries']) &&
-                in_array($library_id,
-                    $this->config['holdings']['exclude_libraries'])) {
+            if (isset($this->config['holdings']['exclude_libraries'])
+                && in_array(
+                    $library_id, $this->config['holdings']['exclude_libraries']
+                )
+            ) {
                 continue;
             }
 
@@ -689,11 +705,10 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @return array An array of parseCallInfo() return values on success,
      * an empty array otherwise.
-     * @access protected
      */
-    protected function getLiveStatuses($ids) 
+    protected function getLiveStatuses($ids)
     {
-        foreach ($ids as $id) { 
+        foreach ($ids as $id) {
             $items[$id] = array();
         }
 
@@ -722,9 +737,10 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
              * the ItemInfo.
              */
             if (isset($titleInfo->BoundwithLinkInfo)) {
-                $items[$ckey] = 
-                    $this->parseBoundwithLinkInfo($titleInfo->BoundwithLinkInfo, 
-                        $ckey);
+                $items[$ckey] = $this->parseBoundwithLinkInfo(
+                    $titleInfo->BoundwithLinkInfo,
+                    $ckey
+                );
             }
 
             /* Callnums that are not bound-with, or are bound-with parents,
@@ -732,21 +748,25 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
              * children do not have item records, parsing them should have no
              * effect. */
             if (isset($titleInfo->CallInfo)) {
-                $items[$ckey] = array_merge($items[$ckey],
-                    $this->parseCallInfo($titleInfo->CallInfo, $ckey, $is_holdable));
+                $items[$ckey] = array_merge(
+                    $items[$ckey],
+                    $this->parseCallInfo($titleInfo->CallInfo, $ckey, $is_holdable)
+                );
             }
 
             /* Copies on order do not have item records,
              * so we make some pseudo-items for VuFind. */
             if (isset($titleInfo->TitleOrderInfo)) {
-                $items[$ckey] = array_merge($items[$ckey],
-                    $this->parseTitleOrderInfo($titleInfo->TitleOrderInfo, $ckey));
+                $items[$ckey] = array_merge(
+                    $items[$ckey],
+                    $this->parseTitleOrderInfo($titleInfo->TitleOrderInfo, $ckey)
+                );
             }
         }
         return $items;
     }
 
-    
+
     /**
      * Translate a Symphony policy ID into a policy description
      * (e.g. VIDEO-COLL => Videorecording Collection).
@@ -762,15 +782,15 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @return The policy description, if found, or the policy ID, if not.
      *
-     * @todo policy description override 
+     * @todo policy description override
      */
     protected function translatePolicyID($policyType, $policyID)
     {
-        $policyType = strtoupper($policyType); 
+        $policyType = strtoupper($policyType);
         $policyID   = strtoupper($policyID);
         $policyList = $this->getPolicyList($policyType);
 
-        return isset($policyList[$policyID]) ? 
+        return isset($policyList[$policyID]) ?
             $policyList[$policyID] : $policyID;
     }
 
@@ -782,10 +802,9 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @param string $id The record id to retrieve the holdings for
      *
+     * @throws VF_Exception_ILS
      * @return mixed     On success, an associative array with the following keys:
-     * id, availability (boolean), status, location, reserve, callnumber; on
-     * failure, a PEAR_Error.
-     * @access public
+     * id, availability (boolean), status, location, reserve, callnumber.
      */
     public function getStatus($id)
     {
@@ -801,9 +820,8 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @param array $ids The array of record ids to retrieve the status for
      *
-     * @return mixed        An array of getStatus() return values on success,
-     * a PEAR_Error object otherwise.
-     * @access public
+     * @throws VF_Exception_ILS
+     * @return array     An array of getStatus() return values on success.
      */
     public function getStatuses($ids)
     {
@@ -823,10 +841,10 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      * @param string $id     The record id to retrieve the holdings for
      * @param array  $patron Patron data
      *
-     * @return mixed     On success, an associative array with the following keys:
-     * id, availability (boolean), status, location, reserve, callnumber, duedate,
-     * number, barcode; on failure, a PEAR_Error.
-     * @access public
+     * @throws VF_Exception_ILS
+     * @return array         On success, an associative array with the following
+     * keys: id, availability (boolean), status, location, reserve, callnumber,
+     * duedate, number, barcode.
      */
     public function getHolding($id, $patron = false)
     {
@@ -841,9 +859,8 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @param string $id The record id to retrieve the info for
      *
-     * @return mixed An array with the acquisitions data on success, PEAR_Error
-     * on failure
-     * @access public
+     * @throws VF_Exception_ILS
+     * @return array     An array with the acquisitions data on success.
      */
     public function getPurchaseHistory($id)
     {
@@ -858,21 +875,21 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      * @param string $username The patron username
      * @param string $password The patron password
      *
-     * @return mixed           Associative array of patron info on successful login,
-     * null on unsuccessful login, PEAR_Error on error.
-     * @access public
+     * @throws VF_Exception_ILS
+     * @return mixed          Associative array of patron info on successful login,
+     * null on unsuccessful login.
      */
-    public function patronLogin($username, $password) 
+    public function patronLogin($username, $password)
     {
-        $usernameField = 
-                $this->config['Behaviors']['usernameField'];
+        $usernameField = $this->config['Behaviors']['usernameField'];
 
         $patron = array(
             'cat_username' => $username,
             'cat_password' => $password,
         );
 
-        $resp = $this->makeRequest('patron',
+        $resp = $this->makeRequest(
+            'patron',
             'lookupMyAccountInfo',
             array(
                 'includePatronInfo' => 'true',
@@ -881,13 +898,14 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
             array(
                 'login' => $username,
                 'password' => $password,
-            ));
+            )
+        );
 
         $patron['id']      = $resp->patronInfo->$usernameField;
         $patron['library'] = $resp->patronInfo->patronLibraryID;
 
-        if (preg_match('/([^,]*),\s([^\s]*)/', $resp->patronInfo->displayName, 
-            $matches)) {
+        $regEx = '/([^,]*),\s([^\s]*)/';
+        if (preg_match($regEx, $resp->patronInfo->displayName, $matches)) {
             $patron['firstname'] = $matches[2];
             $patron['lastname']  = $matches[1];
         }
@@ -904,15 +922,14 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @param array $patron The patron array
      *
-     * @return mixed        Array of the patron's profile data on success,
-     * PEAR_Error otherwise.
-     * @access public
+     * @throws VF_Exception_ILS
+     * @return array        Array of the patron's profile data on success.
      */
     public function getMyProfile($patron)
     {
         try {
-            $userProfileGroupField = 
-                $this->config['Behaviors']['userProfileGroupField'];
+            $userProfileGroupField
+                = $this->config['Behaviors']['userProfileGroupField'];
 
             $options = array(
                 'includePatronInfo' => 'true',
@@ -921,13 +938,15 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
                 'includeUserGroupInfo'     => 'true'
             );
 
-            $result = $this->makeRequest('patron',
+            $result = $this->makeRequest(
+                'patron',
                 'lookupMyAccountInfo',
                 $options,
                 array(
                     'login' => $patron['cat_username'],
                     'password' => $patron['cat_password']
-                ));
+                )
+            );
 
             $primaryAddress = $result->patronAddressInfo->primaryAddress;
 
@@ -942,13 +961,15 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
             if (strcmp($userProfileGroupField, 'GROUP_ID') == 0) {
                 $group = $result->patronInfo->groupID;
             } elseif (strcmp($userProfileGroupField, 'USER_PROFILE_ID') == 0) {
-                $group = $this->makeRequest('security',
+                $group = $this->makeRequest(
+                    'security',
                     'lookupSessionInfo',
                     $options,
                     array(
                         'login' => $patron['cat_username'],
                         'password' => $patron['cat_password']
-                    ))->userProfileID;
+                    )
+                )->userProfileID;
             } elseif (strcmp($userProfileGroupField, 'PATRON_LIBRARY_ID') == 0) {
                 $group = $result->patronInfo->patronLibraryID;
             } elseif (strcmp($userProfileGroupField, 'DEPARTMENT') == 0) {
@@ -957,8 +978,8 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
                 $group = null;
             }
 
-            list($lastname,$firstname) = explode(', ', 
-                                            $result->patronInfo->displayName);
+            list($lastname,$firstname)
+                = explode(', ', $result->patronInfo->displayName);
 
             $profile = array(
                 'lastname' => $lastname,
@@ -972,7 +993,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
 
             return $profile;
         } catch (Exception $e) {
-            return new PEAR_Error($e->getMessage());
+            throw new VF_ILS_Exception($e->getMessage());
         }
     }
 
@@ -984,9 +1005,8 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @param array $patron The patron array from patronLogin
      *
-     * @return mixed        Array of the patron's transactions on success,
-     * PEAR_Error otherwise.
-     * @access public
+     * @throws VF_Exception_ILS
+     * @return array        Array of the patron's transactions on success.
      */
     public function getMyTransactions($patron)
     {
@@ -994,17 +1014,19 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
             $transList = array();
             $options   = array('includePatronCheckoutInfo' => 'ALL');
 
-            $result = $this->makeRequest('patron',
+            $result = $this->makeRequest(
+                'patron',
                 'lookupMyAccountInfo',
                 $options,
                 array(
                     'login' => $patron['cat_username'],
                     'password' => $patron['cat_password']
-                ));
+                )
+            );
 
             if (isset($result->patronCheckoutInfo)) {
                 $transactions = $result->patronCheckoutInfo;
-                $transactions = !is_array($transactions) ? array($transactions) : 
+                $transactions = !is_array($transactions) ? array($transactions) :
                     $transactions;
 
                 foreach ($transactions as $transaction) {
@@ -1015,8 +1037,8 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
                     }
 
                     $transList[] = array(
-                        'duedate' => date('F j, Y',
-                            strtotime($transaction->dueDate)),
+                        'duedate' =>
+                            date('F j, Y', strtotime($transaction->dueDate)),
                         'id' => $transaction->titleKey,
                         'barcode' => $transaction->itemID,
                         'renew' => $transaction->renewals,
@@ -1032,7 +1054,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
             }
             return $transList;
         } catch (Exception $e) {
-            return new PEAR_Error($e->getMessage());
+            throw new VF_ILS_Exception($e->getMessage());
         }
     }
 
@@ -1043,9 +1065,8 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @param array $patron The patron array from patronLogin
      *
-     * @return mixed        Array of the patron's holds on success, PEAR_Error
-     * otherwise.
-     * @access public
+     * @throws VF_Exception_ILS
+     * @return array        Array of the patron's holds on success.
      */
     public function getMyHolds($patron)
     {
@@ -1053,18 +1074,20 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
             $holdList = array();
             $options  = array('includePatronHoldInfo' => 'ACTIVE');
 
-            $result = $this->makeRequest('patron',
+            $result = $this->makeRequest(
+                'patron',
                 'lookupMyAccountInfo',
                 $options,
                 array(
                     'login' => $patron['cat_username'],
                     'password' => $patron['cat_password']
-                ));
-            
+                )
+            );
+
             if (!property_exists($result, 'patronHoldInfo')) {
                 return null;
             }
-            
+
             $holds = $result->patronHoldInfo;
             $holds = !is_array($holds) ? array($holds) : $holds;
 
@@ -1074,10 +1097,8 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
                     //'type' => ,
                     'location' => $hold->pickupLibraryID,
                     'reqnum' => $hold->holdKey,
-                    'expire' => date('F j, Y',
-                        strtotime($hold->expiresDate)),
-                    'create' => date('F j, Y',
-                        strtotime($hold->placedDate)),
+                    'expire' => date('F j, Y', strtotime($hold->expiresDate)),
+                    'create' => date('F j, Y', strtotime($hold->placedDate)),
                     'position' => $hold->queuePosition,
                     'available' => $hold->available,
                     'item_id' => $hold->itemID,
@@ -1090,7 +1111,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
         } catch(SoapFault $e) {
             return null;
         } catch(Exception $e) {
-            return new PEAR_Error($e->getMessage());
+            throw new VF_ILS_Exception($e->getMessage());
         }
     }
 
@@ -1101,9 +1122,8 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @param array $patron The patron array from patronLogin
      *
-     * @return mixed        Array of the patron's fines on success, PEAR_Error
-     * otherwise.
-     * @access public
+     * @throws VF_Exception_ILS
+     * @return mixed        Array of the patron's fines on success.
      */
     public function getMyFines($patron)
     {
@@ -1112,13 +1132,15 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
             $feeType  = $this->config['Behaviors']['showFeeType'];
             $options  = array('includeFeeInfo' => $feeType);
 
-            $result = $this->makeRequest('patron',
+            $result = $this->makeRequest(
+                'patron',
                 'lookupMyAccountInfo',
                 $options,
                 array(
                     'login' => $patron['cat_username'],
                     'password' => $patron['cat_password']
-                ));
+                )
+            );
 
             if (isset($result->feeInfo)) {
                 $fees = $result->feeInfo;
@@ -1128,12 +1150,12 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
                     $fineList[] = array(
                         'amount' => $fee->amount->_ * 100,
                         'checkout' =>
-                            isset($fee->feeItemInfo->checkoutDate) ? 
+                            isset($fee->feeItemInfo->checkoutDate) ?
                             $fee->feeItemInfo->checkoutDate : null,
                         'fine' => $fee->billReasonDescription,
                         'balance' => $fee->amountOutstanding->_ * 100,
-                        'createdate' => 
-                            isset($fee->feeItemInfo->dateBilled) ? 
+                        'createdate' =>
+                            isset($fee->feeItemInfo->dateBilled) ?
                             $fee->feeItemInfo->dateBilled : null,
                         'duedate' =>
                             isset($fee->feeItemInfo->dueDate) ?
@@ -1143,12 +1165,12 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
                     );
                 }
             }
-           
+
             return $fineList;
         } catch (SoapFault $e) {
-            return new PEAR_Error($e->getMessage());
+            throw new VF_ILS_Exception($e->getMessage());
         } catch(Exception $e) {
-            return new PEAR_Error($e->getMessage());
+            throw new VF_ILS_Exception($e->getMessage());
         }
     }
 
@@ -1160,7 +1182,6 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      * @param array $holdDetails An array of item data
      *
      * @return string  Data for use in a form field
-     * @access public
      */
     public function getCancelHoldDetails($holdDetails)
     {
@@ -1177,34 +1198,35 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      * @return mixed  An array of data on each request including
      * whether or not it was successful and a system message (if available)
      * or boolean false on failure
-     * @access public
      */
     public function cancelHolds($cancelDetails)
     {
         $count  = 0;
         $items  = array();
         $patron = $cancelDetails['patron'];
-        
+
         foreach ($cancelDetails['details'] as $holdKey) {
             try {
                 $options = array('holdKey' => $holdKey);
 
-                $hold = $this->makeRequest('patron',
+                $hold = $this->makeRequest(
+                    'patron',
                     'cancelMyHold',
                     $options,
                     array(
                         'login' => $patron['cat_username'],
                         'password' => $patron['cat_password']
-                    ));
-                
+                    )
+                );
+
                 $count++;
                 $items[$holdKey] = array(
-                    'success' => true, 
+                    'success' => true,
                     'status' => 'hold_cancel_success'
                 );
             } catch (Exception $e) {
                 $items[$holdKey] = array(
-                    'success' => false, 
+                    'success' => false,
                     'status' => 'hold_cancel_fail',
                     'sysMessage' => $e->getMessage()
                 );
@@ -1221,7 +1243,6 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      * @param string $function The name of the feature to be checked
      *
      * @return array An array with key-value pairs.
-     * @access public
      */
     public function getConfig($function)
     {
@@ -1272,20 +1293,20 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
             try {
                 $options = array('itemID' => $barcode);
 
-                $renewal = $this->makeRequest('patron',
+                $renewal = $this->makeRequest(
+                    'patron',
                     'renewMyCheckout',
                     $options,
                     array(
                         'login' => $patron['cat_username'],
                         'password' => $patron['cat_password'],
-                    ));
+                    )
+                );
 
                 $details[$barcode] = array(
                     'success' => true,
-                    'new_date' => date('j-M-y',
-                        strtotime($renewal->dueDate)),
-                    'new_time' =>date('g:i a',
-                        strtotime($renewal->dueDate)),
+                    'new_date' => date('j-M-y', strtotime($renewal->dueDate)),
+                    'new_time' =>date('g:i a', strtotime($renewal->dueDate)),
                     'item_id' => $renewal->itemID,
                     'sysMessage' => $renewal->message
                 );
@@ -1294,7 +1315,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
                     'success' => false,
                     'new_date' => false,
                     'new_time' => false,
-                    'sysMessage' => 
+                    'sysMessage' =>
                         'We could not renew this item: ' . $e->getMessage()
                 );
             }
@@ -1313,7 +1334,6 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @return array  An array of data on the request including
      * whether or not it was successful and a system message (if available)
-     * @access public
      */
     public function placeHold($holdDetails)
     {
@@ -1341,13 +1361,15 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
                 $options['comment'] = $holdDetails['comment'];
             }
 
-            $hold = $this->makeRequest('patron',
+            $hold = $this->makeRequest(
+                'patron',
                 'createMyHold',
                 $options,
                 array(
                     'login' => $patron['cat_username'],
                     'password' => $patron['cat_password']
-                ));
+                )
+            );
 
             $result = array(
                 'success' => true,
@@ -1372,7 +1394,6 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      * @param string $policyType Symphony policy code for type of policy
      *
      * @return array An associative array of policy codes and descriptions.
-     * @access protected
      */
     protected function getPolicyList($policyType)
     {
@@ -1388,12 +1409,13 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
             } else {
                 $policyList = array();
                 $options    = array('policyType' => $policyType);
-                $policies   = $this->makeRequest('admin', 'lookupPolicyList', 
-                    $options);
+                $policies   = $this->makeRequest(
+                    'admin', 'lookupPolicyList', $options
+                );
 
                 foreach ($policies->policyInfo as $policyInfo) {
-                    $policyList[$policyInfo->policyID] = 
-                        $policyInfo->policyDescription;
+                    $policyList[$policyInfo->policyID]
+                        = $policyInfo->policyDescription;
                 }
 
                 $policyCache->save($policyList, $cacheKey);
@@ -1421,7 +1443,6 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @return array        An array of associative arrays with locationID and
      * locationDisplay keys
-     * @access public
      */
     public function getPickUpLocations($patron = false, $holdDetails = null)
     {
@@ -1433,7 +1454,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
                 'locationDisplay' => $library
             );
         }
- 
+
         return $libraries;
     }
 
@@ -1460,11 +1481,10 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
             // If no library returned in patron info, check config file
             return $this->config['Holds']['defaultPickUpLocation'];
         } else {
-            // Default to first library in the list if none specified 
+            // Default to first library in the list if none specified
             // in patron info or config file
             $libraries = $this->getPickUpLocations();
             return $libraries[0]['locationID'];
         }
     }
 }
-?>
