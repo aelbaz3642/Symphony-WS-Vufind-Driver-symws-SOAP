@@ -408,7 +408,8 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
                 );
             $onBlacklist = in_array(
                 $libraryID, $this->config['LibraryFilter']['exclude']
-            )
+            );
+
             if ($notInWhitelist || $onBlacklist) {
                 continue;
             }
@@ -503,7 +504,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
                 $transitSourceLibrary
                     = isset($itemInfo->transitSourceLibraryID)
                     ? $this->translatePolicyID(
-                        'LIBR', $itemInfo->transitSourceLibraryID]
+                        'LIBR', $itemInfo->transitSourceLibraryID
                     )
                     : null;
 

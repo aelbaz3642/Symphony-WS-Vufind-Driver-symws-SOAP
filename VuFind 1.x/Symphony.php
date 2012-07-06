@@ -472,7 +472,8 @@ class Symphony implements DriverInterface
                 );
             $onBlacklist = in_array(
                 $libraryID, $this->config['LibraryFilter']['exclude']
-            )
+            );
+
             if ($notInWhitelist || $onBlacklist) {
                 continue;
             }
@@ -567,7 +568,7 @@ class Symphony implements DriverInterface
                 $transitSourceLibrary
                     = isset($itemInfo->transitSourceLibraryID)
                     ? $this->translatePolicyID(
-                        'LIBR', $itemInfo->transitSourceLibraryID]
+                        'LIBR', $itemInfo->transitSourceLibraryID
                     )
                     : null;
 
