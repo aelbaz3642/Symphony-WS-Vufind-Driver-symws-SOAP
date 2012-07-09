@@ -19,18 +19,19 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
- * @category VuFind2
+ * @category VuFind
  * @package  ILS_Drivers
  * @author   Steven Hild <sjhild@wm.edu>
  * @author   Michael Gillen <mlgillen@sfasu.edu>
  * @license  http://opensource.org/licenses/gpl-2.0.php GNU General Public License
  * @link     http://vufind.org/wiki/building_an_ils_driver Wiki
  */
+require_once 'Interface.php';
 
 /**
  * Symphony Web Services (symws) ILS Driver
  *
- * @category VuFind2
+ * @category VuFind
  * @package  ILS_Drivers
  * @author   Steven Hild <sjhild@wm.edu>
  * @author   Michael Gillen <mlgillen@sfasu.edu>
@@ -38,32 +39,30 @@
  * @link     http://vufind.org/wiki/building_an_ils_driver Wiki
  */
 
-class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
+class Symphony implements DriverInterface
 {
     protected $config;
-    protected $cacheManager;
-    protected $policies;
 
     /**
      * Constructor
      *
      * @param string $configFile The location of an alternative config file
+     *
+     * @access public
      */
-    public function __construct($configFile = 'Symphony.ini')
+    public function __construct($configFile = false)
     {
-        // Find and load the configuration file if it exists.
-        $configFilePath = VF_Config_Reader::getConfigPath($configFile);
-        if (file_exists($configFilePath)) {
-            $this->config = parse_ini_file($configFilePath, true);
-            if (!is_array($this->config)) {
-                throw new VF_Exception_ILS('Could not parse config file!');
-            }
+        if ($configFile) {
+            // Load Configuration passed in
+            $this->config = parse_ini_file('conf/'.$configFile, true);
+        } else {
+            // Default Configuration
+            $this->config = parse_ini_file('conf/Symphony.ini', true);
         }
 
         // Merge in defaults.
         $this->config += array(
             'WebServices' => array(),
-            'PolicyCache' => array(),
             'LibraryFilter' => array(),
             '999Holdings' => array(),
             'Behaviors' => array(),
@@ -73,17 +72,6 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
             'clientID' => 'VuFind',
             'baseURL' => 'http://localhost:8080/symws',
             'soapOptions' => array(),
-        );
-
-        $this->config['PolicyCache'] += array(
-            'backend' => 'file',
-            'backendOptions' => array(),
-            'frontendOptions' => array(),
-        );
-
-        $this->config['PolicyCache']['frontendOptions'] += array(
-            'automatic_serialization' => true,
-            'lifetime' => null,
         );
 
         $this->config['LibraryFilter'] += array(
@@ -103,21 +91,6 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
             'showFeeType' => 'ALL_FEES',
             'usernameField' => 'userID',
             'userProfileGroupField' => 'USER_PROFILE_ID'
-        );
-
-        // Initialize cache manager.
-        $this->cacheManager = new Zend_Cache_Manager;
-        $this->cacheManager->setCacheTemplate(
-            'policy', array(
-                'frontend' => array(
-                    'name' => 'Core',
-                    'options' => $this->config['PolicyCache']['frontendOptions'],
-                ),
-                'backend' => array(
-                    'name' => $this->config['PolicyCache']['backend'],
-                    'options' => $this->config['PolicyCache']['backendOptions'],
-                ),
-            )
         );
     }
 
@@ -288,6 +261,80 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
     }
 
     /**
+     * Get Statuses from 999 Holdings Marc Tag for Vufind versions older than 1.4
+     *
+     * Protected support method for parsing status info from the marc record
+     *
+     * @param array $ids     The array of record ids to retrieve the item info for
+     * @param array $marcMap The associative array of marc fields to map
+     *
+     * @return array An associative array of items with mapped marc fields
+     * @access protected
+     */
+    protected function get999HoldingsPre14($ids, $marcMap)
+    {
+        // Setup Search Engine Connection
+        $db      = ConnectionManager::connectToIndex();
+        $results = array();
+
+        foreach ($ids as $id) {
+            // Retrieve the record from the index
+            if (!($record = $db->getRecord($id))) {
+                PEAR::raiseError(new PEAR_Error('Record Does Not Exist'));
+            }
+
+            // Also process the MARC record:
+            $marc = trim($record['fullrecord']);
+            // check if we are dealing with MARCXML
+            $xmlHead = '<?xml version';
+            if (strcasecmp(substr($marc, 0, strlen($xmlHead)), $xmlHead) === 0) {
+                $marc = new File_MARCXML($marc, File_MARCXML::SOURCE_STRING);
+            } else {
+                $marc = preg_replace('/#31;/', "\x1F", $marc);
+                $marc = preg_replace('/#30;/', "\x1E", $marc);
+                $marc = new File_MARC($marc, File_MARC::SOURCE_STRING);
+            }
+
+            $marcRecord = $marc->next();
+            if (!$marcRecord) {
+                PEAR::raiseError(new PEAR_Error('Cannot Process MARC Record'));
+            }
+            $fields = $marcRecord->getFields(
+                $this->config['999Holdings']['entry_number']
+            );
+            if (!$fields) {
+                continue;
+            }
+
+            foreach ($fields as $field) {
+                $current   = array();
+                $subfields = $field->getSubfields();
+                if ($subfields) {
+                    $current['id'] = $id;
+                    foreach ($subfields as $subfield) {
+                        if (!is_numeric($subfield->getCode())) {
+                            if (in_array('marc|'.$subfield->getCode(), $marcMap)) {
+                                $key = array_search(
+                                    'marc|'.$subfield->getCode(), $marcMap
+                                );
+
+                                $current[$key] = $subfield->getData();
+                            } else {
+                                $current[$subfield->getCode()]
+                                    = $subfield->getData();
+                            }
+                        }
+                    }
+                    if (!empty($current)) {
+                        $results[] = $current;
+                    }
+                }
+            }
+        }
+        return $results;
+    }
+
+    /**
      * Get Statuses from 999 Holdings Marc Tag
      *
      * Protected support method for parsing status info from the marc record
@@ -295,10 +342,10 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      * @param array $ids The array of record ids to retrieve the item info for
      *
      * @return array An associative array of items
+     * @access protected
      */
     protected function getStatuses999Holdings($ids)
     {
-        $items   = array();
         $marcMap = array(
             'call number'            => 'marc|a',
             'copy number'            => 'marc|c',
@@ -310,41 +357,56 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
             'circulate flag'         => 'marc|r'
         );
 
-        $entryNumber = $this->config['999Holdings']['entry_number'];
+        $results = array();
+        if (method_exists('MarcRecord', 'getFormattedMarcDetails')) {
+            $db = ConnectionManager::connectToIndex();
+            $entryNumber = $this->config['999Holdings']['entry_number'];
 
-        foreach (VF_Search_Solr_Results::getRecords($ids) as $record) {
-            $results = $record->getFormattedMarcDetails($entryNumber, $marcMap);
-            foreach ($results as $result) {
-                $library  = $this->translatePolicyID('LIBR', $result['library']);
-                $home_loc
-                    = $this->translatePolicyID('LOCN', $result['home location']);
+            foreach ($ids as $id) {
+                if (!($record = $db->getRecord($id))) {
+                    PEAR::raiseError(new PEAR_Error('Record Does Not Exist'));
+                }
+                $recordDriver = RecordDriverFactory::initRecordDriver($record);
 
-                $curr_loc = isset($result['current location']) ?
-                    $this->translatePolicyID('LOCN', $result['current location']) :
-                    $home_loc;
-
-                $available = (empty($curr_loc) || $curr_loc == $home_loc)
-                    || $result['circulate flag'] == 'Y';
-                $callnumber = $result['call number'];
-                $location   = $library . ' - ' . ($available && !empty($curr_loc)
-                    ? $curr_loc : $home_loc);
-
-                $items[$result['id']][] = array(
-                    'id' => $result['id'],
-                    'availability' => $available,
-                    'status' => $curr_loc,
-                    'location' => $location,
-                    'reserve' => null,
-                    'callnumber' => $callnumber,
-                    'duedate' => null,
-                    'returnDate' => false,
-                    'number' => $result['copy number'],
-                    'barcode' => $result['barcode number'],
-                    'item_id' => $result['barcode number'],
-                    'library' => $library,
-                    'material' => $material
-                );
+                $results +=
+                    $recordDriver->getFormattedMarcDetails($entryNumber, $marcMap);
             }
+        } else {
+            $results = $this->get999HoldingsPre14($ids, $marcMap);
+        }
+
+        $items = array();
+        foreach ($results as $result) {
+            $library  = $this->translatePolicyID('LIBR', $result['library']);
+            $material = $this->translatePolicyID('ITYP', $result['item type']);
+            $home_loc = $this->translatePolicyID('LOCN', $result['home location']);
+
+            $curr_loc = isset($result['current location']) ?
+                $this->translatePolicyID('LOCN', $result['current location']) :
+                $home_loc;
+
+            $available
+                = (empty($curr_loc) || $curr_loc == $home_loc)
+                    || $result['circulate flag'] == 'Y';
+            $callnumber = $result['call number'];
+            $location   = $library . ' - ' . ($available && !empty($curr_loc)
+                ? $curr_loc : $home_loc);
+
+            $items[$result['id']][] = array(
+                'id' => $result['id'],
+                'availability' => $available,
+                'status' => $curr_loc,
+                'location' => $location,
+                'reserve' => null,
+                'callnumber' => $callnumber,
+                'duedate' => null,
+                'returnDate' => false,
+                'number' => $result['copy number'],
+                'barcode' => $result['barcode number'],
+                'item_id' => $result['barcode number'],
+                'library' => $library,
+                'material' => $material
+            );
         }
         return $items;
     }
@@ -357,6 +419,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      * @param array $ids The array of record ids to retrieve the item info for
      *
      * @return object Result of the "lookupTitleInfo" call to the standard service
+     * @access protected
      */
     protected function lookupTitleInfo($ids)
     {
@@ -391,6 +454,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      * @param integer $bound_in    The ID of the parent title
      *
      * @return array An array of items, an empty array otherwise
+     * @access protected
      */
     protected function parseCallInfo($callInfos, $titleID, $is_holdable = false,
         $bound_in = null
@@ -572,6 +636,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @return array An array of parseCallInfo() return values on success,
      * an empty array otherwise.
+     * @access protected
      */
     protected function parseBoundwithLinkInfo($boundwithLinkInfos, $ckey)
     {
@@ -631,6 +696,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      * @param integer $titleID         The ID of the title in the catalog
      *
      * @return array An array of items that are on order, an empty array otherwise.
+     * @access protected
      */
     protected function parseTitleOrderInfo($titleOrderInfos, $titleID)
     {
@@ -706,6 +772,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @return array An array of parseCallInfo() return values on success,
      * an empty array otherwise.
+     * @access protected
      */
     protected function getLiveStatuses($ids)
     {
@@ -803,9 +870,10 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @param string $id The record id to retrieve the holdings for
      *
-     * @throws VF_Exception_ILS
      * @return mixed     On success, an associative array with the following keys:
-     * id, availability (boolean), status, location, reserve, callnumber.
+     * id, availability (boolean), status, location, reserve, callnumber; on
+     * failure, a PEAR_Error.
+     * @access public
      */
     public function getStatus($id)
     {
@@ -821,8 +889,9 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @param array $ids The array of record ids to retrieve the status for
      *
-     * @throws VF_Exception_ILS
-     * @return array     An array of getStatus() return values on success.
+     * @return mixed An array of getStatus() return values on success,
+     * a PEAR_Error object otherwise.
+     * @access public
      */
     public function getStatuses($ids)
     {
@@ -842,10 +911,10 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      * @param string $id     The record id to retrieve the holdings for
      * @param array  $patron Patron data
      *
-     * @throws VF_Exception_ILS
-     * @return array         On success, an associative array with the following
-     * keys: id, availability (boolean), status, location, reserve, callnumber,
-     * duedate, number, barcode.
+     * @return mixed     On success, an associative array with the following keys:
+     * id, availability (boolean), status, location, reserve, callnumber, duedate,
+     * number, barcode; on failure, a PEAR_Error.
+     * @access public
      */
     public function getHolding($id, $patron = false)
     {
@@ -860,15 +929,16 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @param string $id The record id to retrieve the info for
      *
-     * @throws VF_Exception_ILS
-     * @return array     An array with the acquisitions data on success.
+     * @return mixed An array with the acquisitions data on success, PEAR_Error
+     * on failure
+     * @access public
      */
     public function getPurchaseHistory($id)
     {
         return array();
     }
 
-     /**
+    /**
      * Patron Login
      *
      * This is responsible for authenticating a patron against the catalog.
@@ -876,9 +946,9 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      * @param string $username The patron username
      * @param string $password The patron password
      *
-     * @throws VF_Exception_ILS
-     * @return mixed          Associative array of patron info on successful login,
-     * null on unsuccessful login.
+     * @return mixed           Associative array of patron info on successful login,
+     * null on unsuccessful login, PEAR_Error on error.
+     * @access public
      */
     public function patronLogin($username, $password)
     {
@@ -923,8 +993,9 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @param array $patron The patron array
      *
-     * @throws VF_Exception_ILS
-     * @return array        Array of the patron's profile data on success.
+     * @return mixed        Array of the patron's profile data on success,
+     * PEAR_Error otherwise.
+     * @access public
      */
     public function getMyProfile($patron)
     {
@@ -994,7 +1065,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
 
             return $profile;
         } catch (Exception $e) {
-            throw new VF_ILS_Exception($e->getMessage());
+            return new PEAR_Error($e->getMessage());
         }
     }
 
@@ -1006,8 +1077,9 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @param array $patron The patron array from patronLogin
      *
-     * @throws VF_Exception_ILS
-     * @return array        Array of the patron's transactions on success.
+     * @return mixed        Array of the patron's transactions on success,
+     * PEAR_Error otherwise.
+     * @access public
      */
     public function getMyTransactions($patron)
     {
@@ -1055,7 +1127,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
             }
             return $transList;
         } catch (Exception $e) {
-            throw new VF_ILS_Exception($e->getMessage());
+            return new PEAR_Error($e->getMessage());
         }
     }
 
@@ -1066,8 +1138,9 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @param array $patron The patron array from patronLogin
      *
-     * @throws VF_Exception_ILS
-     * @return array        Array of the patron's holds on success.
+     * @return mixed        Array of the patron's holds on success, PEAR_Error
+     * otherwise.
+     * @access public
      */
     public function getMyHolds($patron)
     {
@@ -1112,7 +1185,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
         } catch(SoapFault $e) {
             return null;
         } catch(Exception $e) {
-            throw new VF_ILS_Exception($e->getMessage());
+            return new PEAR_Error($e->getMessage());
         }
     }
 
@@ -1123,8 +1196,9 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @param array $patron The patron array from patronLogin
      *
-     * @throws VF_Exception_ILS
-     * @return mixed        Array of the patron's fines on success.
+     * @return mixed        Array of the patron's fines on success, PEAR_Error
+     * otherwise.
+     * @access public
      */
     public function getMyFines($patron)
     {
@@ -1169,9 +1243,9 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
 
             return $fineList;
         } catch (SoapFault $e) {
-            throw new VF_ILS_Exception($e->getMessage());
+            return new PEAR_Error($e->getMessage());
         } catch(Exception $e) {
-            throw new VF_ILS_Exception($e->getMessage());
+            return new PEAR_Error($e->getMessage());
         }
     }
 
@@ -1183,13 +1257,14 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      * @param array $holdDetails An array of item data
      *
      * @return string  Data for use in a form field
+     * @access public
      */
     public function getCancelHoldDetails($holdDetails)
     {
         return $holdDetails['reqnum'];
     }
 
-     /**
+    /**
      * Cancel Holds
      *
      * Attempts to Cancel a hold on a particular item
@@ -1199,6 +1274,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      * @return mixed  An array of data on each request including
      * whether or not it was successful and a system message (if available)
      * or boolean false on failure
+     * @access public
      */
     public function cancelHolds($cancelDetails)
     {
@@ -1237,13 +1313,14 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
         return $result;
     }
 
-     /**
+    /**
      * Public Function which retrieves renew, hold and cancel settings from the
      * driver ini file.
      *
      * @param string $function The name of the feature to be checked
      *
      * @return array An array with key-value pairs.
+     * @access public
      */
     public function getConfig($function)
     {
@@ -1335,6 +1412,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @return array  An array of data on the request including
      * whether or not it was successful and a system message (if available)
+     * @access public
      */
     public function placeHold($holdDetails)
     {
@@ -1395,34 +1473,28 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      * @param string $policyType Symphony policy code for type of policy
      *
      * @return array An associative array of policy codes and descriptions.
+     * @access protected
      */
     protected function getPolicyList($policyType)
     {
+        if (isset($_SESSION['symws']['policies'][$policyType])) {
+            return $_SESSION['symws']['policies'][$policyType];
+        }
+
         try {
-            $policyCache = $this->cacheManager->getCache('policy');
-            $cacheKey    = hash('sha256', "${policyType}");
+            $policyList = array();
 
-            if (isset($this->policies[$policyType])) {
-                return $this->policies[$policyType];
-            } elseif ($policyList = $policyCache->load($cacheKey)) {
-                $this->policies[$policyType] = $policyList;
-                return $policyList;
-            } else {
-                $policyList = array();
-                $options    = array('policyType' => $policyType);
-                $policies   = $this->makeRequest(
-                    'admin', 'lookupPolicyList', $options
-                );
+            $options = array('policyType' => $policyType);
 
-                foreach ($policies->policyInfo as $policyInfo) {
-                    $policyList[$policyInfo->policyID]
-                        = $policyInfo->policyDescription;
-                }
+            $policies = $this->makeRequest('admin', 'lookupPolicyList', $options);
 
-                $policyCache->save($policyList, $cacheKey);
-
-                return $policyList;
+            foreach ($policies->policyInfo as $policyInfo) {
+                $policyList[$policyInfo->policyID]
+                    = $policyInfo->policyDescription;
             }
+
+            $_SESSION['symws']['policies'][$policyType] = $policyList;
+            return $policyList;
         } catch (Exception $e) {
             return array();
         }
@@ -1444,6 +1516,7 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
      *
      * @return array        An array of associative arrays with locationID and
      * locationDisplay keys
+     * @access public
      */
     public function getPickUpLocations($patron = false, $holdDetails = null)
     {
@@ -1489,3 +1562,4 @@ class VF_ILS_Driver_Symphony implements VF_ILS_Driver_Interface
         }
     }
 }
+?>
